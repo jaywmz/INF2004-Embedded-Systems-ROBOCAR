@@ -1,29 +1,58 @@
-cmake_minimum_required(VERSION 3.12) 
- 
-# Pull in SDK (must be before project) 
-include(pico_sdk_import.cmake) 
-include(pico_extras_import_optional.cmake) 
-include(FreeRTOS_Kernel_import.cmake) 
- 
-project(INF2004_TEAM_P1C C CXX ASM) 
-set(CMAKE_C_STANDARD 11) 
-set(CMAKE_CXX_STANDARD 17) 
-set(PICO_BOARD pico_w) 
- 
-if (PICO_SDK_VERSION_STRING VERSION_LESS "1.3.0") 
-    message(FATAL_ERROR "Raspberry Pi Pico SDK version 1.3.0 (or later) required. Your version is ${PICO_SDK_VERSION_STRING}") 
-endif() 
- 
-# Initialize the SDK 
-pico_sdk_init() 
- 
- 
-# Add the directory that contains FreeRTOSConfig.h 
-include_directories(${CMAKE_SOURCE_DIR})  # Add root directory to include path 
- 
- 
-if (NOT PICO_NO_HARDWARE) 
-    add_subdirectory(ultrasonic) 
-    add_subdirectory(wheel_encoder) 
-    add_subdirectory(wheel_ultra)
-endif ()
+# Generated Cmake Pico project file
+
+cmake_minimum_required(VERSION 3.13)
+
+set(WIFI_SSID "SSID HERE")
+set(WIFI_PASSWORD "PASSWORD HERE")
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Do not allow in-source build.
+if(${PROJECT_SOURCE_DIR} STREQUAL ${PROJECT_BINARY_DIR})
+    message(FATAL_ERROR "In-source build is not allowed. Please build in a separate directory, such as ${PROJECT_SOURCE_DIR}/build.")
+endif()
+
+# Set global path variables.
+# get_filename_component(__MODULE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+# set(MODULE_ROOT_DIR ${__MODULE_ROOT_DIR} CACHE INTERNAL "coreMQTT repository root.")
+
+# Set output directories.
+# set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+# set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+# set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+# Initialise pico_sdk from installed location
+# (note this can come from environment, CMake cache etc)
+
+# == DO NEVER EDIT THE NEXT LINES for Raspberry Pi Pico VS Code Extension to work ==
+if(WIN32)
+    set(USERHOME $ENV{USERPROFILE})
+else()
+    set(USERHOME $ENV{HOME})
+endif()
+
+set(sdkVersion 2.0.0)
+set(toolchainVersion 13_2_Rel1)
+set(picotoolVersion 2.0.0)
+set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+
+if(EXISTS ${picoVscode})
+    include(${picoVscode})
+endif()
+
+set(PICO_BOARD pico_w CACHE STRING "Board type")
+
+include(pico_sdk_import.cmake)
+
+# ====================================================================================
+set(FREERTOS_KERNEL_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lib/FreeRTOS-Kernel)
+include(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/GCC/RP2040/FreeRTOS_Kernel_import.cmake)
+
+project(pico-wifi C CXX ASM)
+
+# Initialise the Raspberry Pi Pico SDK
+pico_sdk_init()
+
+add_subdirectory(src)
