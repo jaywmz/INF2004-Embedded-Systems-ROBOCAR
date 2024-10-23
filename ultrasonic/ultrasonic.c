@@ -4,6 +4,7 @@
 #include "hardware/timer.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include <stdlib.h>  // Include this header for calloc
 
 #define TRIGPIN 1
 #define ECHOPIN 0
@@ -73,18 +74,25 @@ void setupUltrasonicPins()
 
     // Enable rising and falling edge interrupts on the echo pin
     gpio_set_irq_enabled_with_callback(ECHOPIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &get_echo_pulse);
+
+    printf("Ultrasonic sensor pins configured: TRIG = %d, ECHO = %d\n", TRIGPIN, ECHOPIN);
 }
 
 // Send a pulse and get the pulse width
-uint64_t getPulse()
-{
+uint64_t getPulse() {
+    pulse_width = 0;  // Reset the pulse width
     gpio_put(TRIGPIN, 1);
-    vTaskDelay(pdMS_TO_TICKS(10));  // 10µs pulse using FreeRTOS
+    vTaskDelay(pdMS_TO_TICKS(10));
     gpio_put(TRIGPIN, 0);
-    vTaskDelay(pdMS_TO_TICKS(1));  // Wait for pulse measurement
 
-    return pulse_width;  // Return the pulse width (in microseconds)
+    absolute_time_t startTime = get_absolute_time();
+    while (pulse_width == 0 && absolute_time_diff_us(startTime, get_absolute_time()) < timeout) {
+        vTaskDelay(pdMS_TO_TICKS(1));  // Allow other tasks to run
+    }
+
+    return pulse_width;
 }
+
 
 // Calculate the moving average of recent distance measurements
 double calculate_moving_average(double new_value)
