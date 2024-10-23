@@ -13,7 +13,7 @@
 // Variables to track pulse count and speed
 volatile uint32_t pulse_count = 0;
 volatile uint64_t last_pulse_time = 0;
-volatile float speed_mm_per_s = 0.0;
+volatile float speed_m_per_s = 0.0;  // Now tracking speed in meters per second
 volatile float total_distance_m = 0.0;
 
 // Constants
@@ -38,20 +38,20 @@ void encoder_callback(uint gpio, uint32_t events) {
             // Increment pulse count
             pulse_count++;
 
-            // Calculate speed in mm/s (convert microseconds to seconds for speed calculation)
+            // Calculate speed in m/s (convert mm to meters and microseconds to seconds)
             if (pulse_duration_us > 0 && pulse_duration_us < 1000000) {  // Filter out long durations
                 float pulse_duration_s = pulse_duration_us / 1000000.0f;
-                speed_mm_per_s = distance_per_pulse_mm / pulse_duration_s;  // Speed in mm/s
+                speed_m_per_s = (distance_per_pulse_mm / 1000.0f) / pulse_duration_s;  // Speed in m/s
             } else {
-                speed_mm_per_s = 0;  // If pulse duration is too long, assume motor has stopped
+                speed_m_per_s = 0;  // If pulse duration is too long, assume motor has stopped
             }
 
             // Update total distance traveled in meters
             total_distance_m += distance_per_pulse_mm / 1000.0f;  // Convert mm to meters
 
             // Print out the results for debugging
-            printf("Pulse Duration: %.2f ms, Pulses: %d, Speed: %.2f mm/s, Total Distance: %.2f meters\n", 
-                   pulse_duration_us / 1000.0f, pulse_count, speed_mm_per_s, total_distance_m);
+            printf("Pulse Duration: %.2f ms, Pulses: %d, Speed: %.2f m/s, Total Distance: %.2f meters\n", 
+                   pulse_duration_us / 1000.0f, pulse_count, speed_m_per_s, total_distance_m);
         }
     }
 }
@@ -60,11 +60,11 @@ void encoder_callback(uint gpio, uint32_t events) {
 bool speed_timer_callback(struct repeating_timer *t) {
     // Reset speed if no pulse has been detected in the last second
     if (time_us_64() - last_pulse_time > 1000000) {
-        speed_mm_per_s = 0;  // Assume motor stopped if no pulse detected
+        speed_m_per_s = 0;  // Assume motor stopped if no pulse detected
     }
 
     // Print speed update and total distance
-    printf("Speed Update -> Speed: %.2f mm/s, Total Distance: %.2f meters\n", speed_mm_per_s, total_distance_m);
+    printf("Speed Update -> Speed: %.2f m/s, Total Distance: %.2f meters\n", speed_m_per_s, total_distance_m);
     return true;
 }
 
