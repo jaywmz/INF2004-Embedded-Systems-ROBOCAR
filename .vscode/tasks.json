@@ -87,7 +87,7 @@
                 "-f",
                 "target/${command:raspberry-pi-pico.getTarget}.cfg",
                 "-c",
-                "adapter speed 5000; program \"${workspaceFolder}/build/src/GY-511/gy-511.elf\" verify reset exit"
+                "adapter speed 5000; program \"${workspaceFolder}/build/examples/GY-511/gy-511.elf\" verify reset exit"
             ],
             "problemMatcher": [],
             "windows": {
@@ -107,7 +107,27 @@
                 "-f",
                 "target/${command:raspberry-pi-pico.getTarget}.cfg",
                 "-c",
-                "adapter speed 5000; program \"${workspaceFolder}/build/src/mqtt_rtos/pico_mqtt_rtos.elf\" verify reset exit"
+                "adapter speed 5000; program \"${workspaceFolder}/build/examples/mqtt_rtos/pico_mqtt_rtos.elf\" verify reset exit"
+            ],
+            "problemMatcher": [],
+            "windows": {
+                "command": "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            },
+        }, 
+        {
+            "label": "Flash fusion",
+            "type": "process",
+            "dependsOn": "Compile Project",
+            "command": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            "args": [
+                "-s",
+                "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
+                "-f",
+                "interface/cmsis-dap.cfg",
+                "-f",
+                "target/${command:raspberry-pi-pico.getTarget}.cfg",
+                "-c",
+                "adapter speed 5000; program \"${workspaceFolder}/build/src/fusion.elf\" verify reset exit"
             ],
             "problemMatcher": [],
             "windows": {

@@ -3,8 +3,8 @@
 
 cmake_minimum_required(VERSION 3.13)
 
-set(WIFI_SSID "SSID HERE")
-set(WIFI_PASSWORD "PASSWORD HERE")
+set(WIFI_SSID "zxcvf")
+set(WIFI_PASSWORD "12345678")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -56,4 +56,5 @@ project(pico-wifi C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
+add_subdirectory(examples)
 add_subdirectory(src)
