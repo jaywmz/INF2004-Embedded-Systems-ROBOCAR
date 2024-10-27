@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <math.h>
+#include <stdlib.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 
@@ -79,43 +80,76 @@ void read_mag(int16_t* mag_data) {
     mag_data[2] = (int16_t)(buffer[2] << 8 | buffer[3]); // Z-axis
 }
 
-// Calculates the heading of the magnetometer from sensor data
-float calculate_heading(int16_t mag_x, int16_t mag_y) {
-    float heading = atan2((float)mag_y, (float)mag_x) * (180.0 / M_PI);
-    if (heading < 0) {
-        heading += 360;
+void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
+                        int16_t mag_x, int16_t mag_y, int16_t mag_z, int16_t *pitch, int16_t *roll, int16_t *yaw) {
+    // Calculate pitch and roll from accelerometer
+    *pitch = (int16_t)round( atan2(accel_y, sqrt(accel_x * accel_x + accel_z * accel_z)) * (180.0 / M_PI) );
+    *roll = (int16_t)round( atan2(accel_x, sqrt(accel_y * accel_y + accel_z * accel_z)) * (180.0 / M_PI) );
+
+    // Tilt-compensated yaw from magnetometer
+    *yaw = (int16_t)round( atan2(mag_y, mag_x) * (180.0 / M_PI) );
+    if (*yaw < 0) {
+        *yaw += 360;
     }
-    return heading;
 }
 
-void process_accelerometer_data(float accel_x, float accel_y, float accel_z) {
-    float gravity_x = 0.9, gravity_y = 0.9, gravity_z = 0.9;
-    float linear_accel_x = 0, linear_accel_y = 0, linear_accel_z = 0;
-    float alpha = 0.8;
+#define MAX_PITCH 30 // Max pitch angle for full speed
+#define MAX_ROLL 30 // Max roll angle for full turn
+#define MAX_DUTY_CYCLE 100 // Max PWM duty cycle percentage
+#define MIN_DUTY_CYCLE 50 // Minimum to ensure motor response
+#define MAX_TURN_DUTY_CYCLE 50
+#define ALPHA 0.8 // Smoothing factor
 
-    // Low-pass filter to estimate gravity
-    gravity_x = alpha * gravity_x + (1 - alpha) * accel_x;
-    gravity_y = alpha * gravity_y + (1 - alpha) * accel_y;
-    gravity_z = alpha * gravity_z + (1 - alpha) * accel_z;
+uint16_t previous_left_duty = 0;
+uint16_t previous_right_duty = 0;
 
-    // Subtract gravity to get linear acceleration
-    linear_accel_x = accel_x - gravity_x;
-    linear_accel_y = accel_y - gravity_y;
-    linear_accel_z = accel_z - gravity_z;
+void update_motor_duty(int16_t *pitch, int16_t *roll) {
+    bool forward;
 
-    printf("    (Accel) X: %f Y: %f Z: %f", linear_accel_x, linear_accel_y, linear_accel_z);
+    if (*pitch < 0) {
+        forward = false;
+    }
+    else {
+        forward = true;
+    }
 
-    // Integrate acceleration to get velocity
-    // velocity_x += linear_accel_x * delta_time;
-    // velocity_y += linear_accel_y * delta_time;
-    // velocity_z += linear_accel_z * delta_time;
+    if (abs(*pitch) > 10) {
+        // Finds the proportionately equivalent duty cycle of the given pitch
+        float pitch_to_dutyCycle = (abs(*pitch) / MAX_PITCH) * MAX_DUTY_CYCLE;
 
-    // printf("Velocity X: %.2f m/s, Y: %.2f m/s, Z: %.2f m/s\n", velocity_x, velocity_y, velocity_z);
-}
+        // Limits forward duty cycle within min and max
+        float forward_dutyCycle = fmin(fmax(pitch_to_dutyCycle, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
 
-void pitchAndRoll(float *accel_x, float *accel_y, float *accel_z, float *pitch, float *roll) {
-    *pitch = atan2(*accel_y, sqrt(*accel_x * *accel_x + *accel_z * *accel_z)) * (180.0 / M_PI);
-    *roll = atan2(*accel_x, sqrt(*accel_y * *accel_y + *accel_z * *accel_z)) * (180.0 / M_PI);
+        // Calculate turning_speed from roll, allowing for left and right turns
+        float turning_speed = (*roll / MAX_ROLL) * MAX_TURN_DUTY_CYCLE;
+
+        // Clamp turning_speed to within [-MAX_TURN_DUTY_CYCLE, MAX_TURN_DUTY_CYCLE]
+        turning_speed = fmin(fmax(turning_speed, -MAX_TURN_DUTY_CYCLE), MAX_TURN_DUTY_CYCLE);
+
+        // Calculate left and right motor duties based on forward and turning speeds
+        float left_motor_duty = forward_dutyCycle + turning_speed;
+        float right_motor_duty = forward_dutyCycle - turning_speed;
+
+        // Clamp final motor duty cycles to stay within [MIN_DUTY_CYCLE, MAX_DUTY_CYCLE]
+        left_motor_duty = fmin(fmax(left_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
+        right_motor_duty = fmin(fmax(right_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
+
+        // Apply smoothing filter
+        left_motor_duty = ALPHA * left_motor_duty + (1 - ALPHA) * previous_left_duty;
+        right_motor_duty = ALPHA * right_motor_duty + (1 - ALPHA) * previous_right_duty;
+
+        // Round to integer
+        uint16_t left_dutyCycle = (uint16_t)round(left_motor_duty);
+        uint16_t right_dutyCycle = (uint16_t)round(right_motor_duty);
+
+        previous_left_duty = left_motor_duty;
+        previous_right_duty = right_motor_duty;
+
+        printf("Forwards: %d, Left Motor Duty: %u, Right Motor Duty: %u\n", forward, left_dutyCycle, right_dutyCycle);
+    }
+    else {
+        return;
+    }
 }
 
 int main() {
@@ -129,29 +163,21 @@ int main() {
     int16_t accel_data[3];
     int16_t mag_data[3];
 
+    int16_t pitch = 0;
+    int16_t roll = 0;
+    int16_t yaw = 0;
+
     while (1) {
         read_accel(accel_data);
         read_mag(mag_data);
 
-        // get the heading from magnetometer data
-        float heading = calculate_heading(mag_data[0], mag_data[1]);
-        printf("Compass Heading: %.2f°", heading);
-
-        // convert accelerometer data to g's
-        float accel_x = accel_data[0] * 0.000061;   
-        float accel_y = accel_data[1] * 0.000061;
-        float accel_z = accel_data[2] * 0.000061;
-        process_accelerometer_data(accel_x, accel_y, accel_z);
-
         // calculate pitch and roll angles of controller
-        float pitch = 0.0;
-        float roll = 0.0;
+        update_orientation(accel_data[0], accel_data[1], accel_data[2], mag_data[0], mag_data[1], mag_data[2], &pitch, &roll, &yaw);
 
-        pitchAndRoll(&accel_x, &accel_y, &accel_z, &pitch, &roll);
+        // translate pitch and roll to duty cycle for wheels
+        update_motor_duty(&pitch, &roll);
 
-        printf("    Pitch: %.2f Roll: %.2f\n", pitch, roll);
-
-        sleep_ms(200);
+        sleep_ms(100);
     }        
     
     return 0;
