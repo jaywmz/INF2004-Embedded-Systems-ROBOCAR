@@ -40,6 +40,13 @@
     "files.associations": {
         "freertos.h": "c",
         "compare": "c",
-        "cstdint": "c"
+        "cstdint": "c",
+        "algorithm": "c",
+        "ip4_addr.h": "c",
+        "cyw43_arch.h": "c",
+        "mdns.h": "c",
+        "mqtt.h": "c",
+        "motor.h": "c",
+        "freertosconfig.h": "c"
     }
 }

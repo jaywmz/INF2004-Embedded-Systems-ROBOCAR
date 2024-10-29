@@ -171,7 +171,7 @@ static size_t get_mac_ascii(int idx, size_t chr_off, size_t chr_len,
     return dest - dest_in;
 }
 
-void main_task(__unused void *params) {
+void mqtt_task(__unused void *params) {
     if (cyw43_arch_init()) {
         printf("failed to initialise\n");
         return;
@@ -254,7 +254,7 @@ void main_task(__unused void *params) {
 
 void vLaunch(void) {
     TaskHandle_t task;
-    xTaskCreate(main_task, "TestMainThread", configMINIMAL_STACK_SIZE, NULL,
+    xTaskCreate(mqtt_task, "TestMainThread", configMINIMAL_STACK_SIZE, NULL,
                 TEST_TASK_PRIORITY, &task);
 
     /* Start the tasks and timer running. */

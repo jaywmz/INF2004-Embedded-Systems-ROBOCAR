@@ -1,41 +1,17 @@
-// MQTT Headers
-#include "pico/cyw43_arch.h"
-#include "pico/stdlib.h"
-
-#include "lwip/api.h"
-#include "lwip/apps/httpd.h"
+#include "FreeRTOS.h"
+#include "hardware/i2c.h"
 #include "lwip/apps/mdns.h"
 #include "lwip/apps/mqtt.h"
-#include "lwip/apps/mqtt_priv.h"
-#include "lwip/dns.h"
-#include "lwip/init.h"
-#include "lwip/ip4_addr.h"
-#include "lwip/netdb.h"
-#include "lwip/pbuf.h"
-#include "lwip/sockets.h"
-#include "lwip/tcp.h"
-
-#include "FreeRTOS.h"
+#include "pico/cyw43_arch.h"
+#include "pico/stdio.h"
+#include "pico/stdlib.h"
 #include "task.h"
+#include <math.h>
 
-// MQTT Definitions
 #define MQTT_SERVER_IP "172.20.10.2"
 #define MQTT_SERVER_PORT 1883
 
-#ifndef RUN_FREERTOS_ON_CORE
-#define RUN_FREERTOS_ON_CORE 0
-#endif
-
-#define TEST_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
-
-#define DEBUG_printf printf
-
-// Accel Headers
-#include "hardware/i2c.h"
-#include <math.h>
-#include <stdio.h>
-
-// Accel Defintions
+// == Compass Configuration ==
 
 // I2C Defines
 #define SDA_PIN 4
@@ -56,14 +32,14 @@
 #define MR_REG_M 0x02
 
 // Global Variables
-int16_t accel_data[3];
-int16_t mag_data[3];
+static bool g_forward = false;
+static uint16_t g_left_dutyCycle = 0;
+static uint16_t g_right_dutyCycle = 0;
+static int16_t g_pitch = 0;
+static int16_t g_roll = 0;
+static int16_t g_yaw = 0;
 
-float global_heading = 0.0;
-float global_pitch = 0.0;
-float global_roll = 0.0;
-
-// Accel functions
+// set up i2c interface
 void i2c_init_setup() {
     i2c_init(i2c_default, 400 * 1000); // 400kHz
     gpio_set_function(SDA_PIN, GPIO_FUNC_I2C);
@@ -121,49 +97,120 @@ void read_mag(int16_t *mag_data) {
     mag_data[2] = (int16_t)(buffer[2] << 8 | buffer[3]); // Z-axis
 }
 
-// Calculates the heading of the magnetometer from sensor data
-float calculate_heading(int16_t mag_x, int16_t mag_y) {
-    float heading = atan2((float)mag_y, (float)mag_x) * (180.0 / M_PI);
-    if (heading < 0) {
-        heading += 360;
+void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
+                        int16_t mag_x, int16_t mag_y, int16_t mag_z,
+                        int16_t *pitch, int16_t *roll, int16_t *yaw) {
+    // Calculate pitch and roll from accelerometer
+    *pitch = (int16_t)round(
+        atan2(accel_y, sqrt(accel_x * accel_x + accel_z * accel_z)) *
+        (180.0 / M_PI));
+    *roll = (int16_t)round(
+        atan2(accel_x, sqrt(accel_y * accel_y + accel_z * accel_z)) *
+        (180.0 / M_PI));
+
+    // Tilt-compensated yaw from magnetometer
+    *yaw = (int16_t)round(atan2(mag_y, mag_x) * (180.0 / M_PI));
+    if (*yaw < 0) {
+        *yaw += 360;
     }
-    return heading;
 }
 
-void process_accelerometer_data(float accel_x, float accel_y, float accel_z) {
-    float gravity_x = 0.9, gravity_y = 0.9, gravity_z = 0.9;
-    float linear_accel_x = 0, linear_accel_y = 0, linear_accel_z = 0;
-    float alpha = 0.8;
+#define MAX_PITCH 30       // Max pitch angle for full speed
+#define MAX_ROLL 30        // Max roll angle for full turn
+#define MAX_DUTY_CYCLE 100 // Max PWM duty cycle percentage
+#define MIN_DUTY_CYCLE 50  // Minimum to ensure motor response
+#define MAX_TURN_DUTY_CYCLE 50
+#define ALPHA 0.8 // Smoothing factor
 
-    // Low-pass filter to estimate gravity
-    gravity_x = alpha * gravity_x + (1 - alpha) * accel_x;
-    gravity_y = alpha * gravity_y + (1 - alpha) * accel_y;
-    gravity_z = alpha * gravity_z + (1 - alpha) * accel_z;
+uint16_t previous_left_duty = 0;
+uint16_t previous_right_duty = 0;
 
-    // Subtract gravity to get linear acceleration
-    linear_accel_x = accel_x - gravity_x;
-    linear_accel_y = accel_y - gravity_y;
-    linear_accel_z = accel_z - gravity_z;
+void update_motor_duty(int16_t *pitch, int16_t *roll) {
+    bool forward;
 
-    // printf("    (Accel) X: %f Y: %f Z: %f", linear_accel_x, linear_accel_y,
-    //        linear_accel_z);
+    if (*pitch < 0) {
+        forward = false;
+    } else {
+        forward = true;
+    }
 
-    // Integrate acceleration to get velocity
-    // velocity_x += linear_accel_x * delta_time;
-    // velocity_y += linear_accel_y * delta_time;
-    // velocity_z += linear_accel_z * delta_time;
+    if (abs(*pitch) > 10) {
+        // Finds the proportionately equivalent duty cycle of the given pitch
+        float pitch_to_dutyCycle = (abs(*pitch) / MAX_PITCH) * MAX_DUTY_CYCLE;
 
-    // printf("Velocity X: %.2f m/s, Y: %.2f m/s, Z: %.2f m/s\n", velocity_x,
-    // velocity_y, velocity_z);
+        // Limits forward duty cycle within min and max
+        float forward_dutyCycle =
+            fmin(fmax(pitch_to_dutyCycle, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
+
+        // Calculate turning_speed from roll, allowing for left and right turns
+        float turning_speed = (*roll / MAX_ROLL) * MAX_TURN_DUTY_CYCLE;
+
+        // Clamp turning_speed to within [-MAX_TURN_DUTY_CYCLE,
+        // MAX_TURN_DUTY_CYCLE]
+        turning_speed = fmin(fmax(turning_speed, -MAX_TURN_DUTY_CYCLE),
+                             MAX_TURN_DUTY_CYCLE);
+
+        // Calculate left and right motor duties based on forward and turning
+        // speeds
+        float left_motor_duty = forward_dutyCycle + turning_speed;
+        float right_motor_duty = forward_dutyCycle - turning_speed;
+
+        // Clamp final motor duty cycles to stay within [MIN_DUTY_CYCLE,
+        // MAX_DUTY_CYCLE]
+        left_motor_duty =
+            fmin(fmax(left_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
+        right_motor_duty =
+            fmin(fmax(right_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
+
+        // Apply smoothing filter
+        left_motor_duty =
+            ALPHA * left_motor_duty + (1 - ALPHA) * previous_left_duty;
+        right_motor_duty =
+            ALPHA * right_motor_duty + (1 - ALPHA) * previous_right_duty;
+
+        // Round to integer
+        uint16_t left_dutyCycle = (uint16_t)round(left_motor_duty);
+        uint16_t right_dutyCycle = (uint16_t)round(right_motor_duty);
+
+        previous_left_duty = left_motor_duty;
+        previous_right_duty = right_motor_duty;
+
+        // printf("Forwards: %d, Left Motor Duty: %u, Right Motor Duty: %u\n",
+        //        forward, left_dutyCycle, right_dutyCycle);
+
+        g_forward = forward;
+        g_left_dutyCycle = left_dutyCycle;
+        g_right_dutyCycle = right_dutyCycle;
+    } else {
+        return;
+    }
 }
 
-void pitchAndRoll(float *accel_x, float *accel_y, float *accel_z, float *pitch,
-                  float *roll) {
-    *pitch = atan2(*accel_y, sqrt(*accel_x * *accel_x + *accel_z * *accel_z)) *
-             (180.0 / M_PI);
-    *roll = atan2(*accel_x, sqrt(*accel_y * *accel_y + *accel_z * *accel_z)) *
-            (180.0 / M_PI);
+void read_motor_task(__unused void *params) {
+    int16_t accel_data[3];
+    int16_t mag_data[3];
+    int16_t pitch, roll, yaw;
+
+    while (1) {
+        read_accel(accel_data);
+        read_mag(mag_data);
+
+        update_orientation(accel_data[0], accel_data[1], accel_data[2],
+                           mag_data[0], mag_data[1], mag_data[2], &g_pitch,
+                           &g_roll, &g_yaw);
+
+        update_motor_duty(&g_pitch, &g_roll);
+    }
 }
+
+// == MQTT Configuration ==
+
+#ifndef RUN_FREERTOS_ON_CORE
+#define RUN_FREERTOS_ON_CORE 0
+#endif
+
+#define TEST_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
+#define DEBUG_printf printf
 
 typedef struct MQTT_CLIENT_T_ {
     ip_addr_t remote_addr;
@@ -184,10 +231,9 @@ static MQTT_CLIENT_T *mqtt_client_init(void) {
     return state;
 }
 
-u32_t data_in = 0;
-
-u8_t buffer[1025];
-u8_t data_len = 0;
+static u32_t data_in = 0;
+static u8_t buffer[1025];
+static u8_t data_len = 0;
 
 static void mqtt_pub_start_cb(void *arg, const char *topic, u32_t tot_len) {
     DEBUG_printf("mqtt_pub_start_cb: topic %s\n", topic);
@@ -234,24 +280,21 @@ void mqtt_sub_request_cb(void *arg, err_t err) {
 }
 
 err_t mqtt_test_publish(MQTT_CLIENT_T *state) {
-    char buffer[128];
+    char buffer[32] = {0};
 
-    // sprintf(buffer, "{\"message\":\"hello from picow %d / %d\"}",
-    //         state->received, state->counter);
-    sprintf(buffer, "{\"h\": %f, \"p\": %f,\"r\": %f}", global_heading,
-            global_pitch, global_roll);
+    sprintf(buffer, "{p:%d,r:%d,y:%d}", g_pitch, g_roll, g_yaw);
 
     err_t err;
-    u8_t qos = 0; /* 0 1 or 2, see MQTT specification.  AWS IoT does not support
-                     QoS 2 */
+    u8_t qos = 0;
     u8_t retain = 0;
     cyw43_arch_lwip_begin();
-    err = mqtt_publish(state->mqtt_client, "pico_w/dashboard", buffer,
-                       strlen(buffer), qos, retain, mqtt_pub_request_cb, state);
+    err = mqtt_publish(state->mqtt_client, "pico_w/car", buffer, strlen(buffer),
+                       qos, retain, mqtt_pub_request_cb, state);
     cyw43_arch_lwip_end();
     if (err != ERR_OK) {
         DEBUG_printf("Publish err: %d\n", err);
     }
+    vTaskDelay(pdMS_TO_TICKS(50));
 
     return err;
 }
@@ -262,10 +305,10 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
 
     memset(&ci, 0, sizeof(ci));
 
-    ci.client_id = "PicoW";
+    ci.client_id = "Compass";
     ci.client_user = NULL;
     ci.client_pass = NULL;
-    ci.keep_alive = 0;
+    ci.keep_alive = 60;
     ci.will_topic = NULL;
     ci.will_msg = NULL;
     ci.will_retain = 0;
@@ -282,12 +325,6 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
     }
 
     return err;
-}
-
-void mqtt_run_test(MQTT_CLIENT_T *state) {
-
-    while (true) {
-    }
 }
 
 // Return some characters from the ascii representation of the mac address
@@ -309,7 +346,7 @@ static size_t get_mac_ascii(int idx, size_t chr_off, size_t chr_len,
     return dest - dest_in;
 }
 
-void main_task(__unused void *params) {
+void mqtt_task(__unused void *params) {
     if (cyw43_arch_init()) {
         printf("failed to initialise\n");
         return;
@@ -361,93 +398,37 @@ void main_task(__unused void *params) {
     mqtt_set_inpub_callback(state->mqtt_client, mqtt_pub_start_cb,
                             mqtt_pub_data_cb, 0);
 
-    while (1) {
+    while (true) {
         if (mqtt_client_is_connected(state->mqtt_client)) {
             cyw43_arch_lwip_begin();
 
-            if (!subscribed) {
-                mqtt_sub_unsub(state->mqtt_client, "pico_w/recv", 0,
-                               mqtt_sub_request_cb, 0, 1);
-                subscribed = true;
-            }
-
-            if (mqtt_test_publish(state) == ERR_OK) {
-                if (state->counter != 0) {
-                    // DEBUG_printf(
-                    //     "Compass Heading: %.2f°    Pitch: %.2f Roll: %.2f\n",
-                    //     global_heading, global_pitch, global_roll);
-                }
-                timeout = make_timeout_time_ms(5000);
-                state->counter++;
-            } // else ringbuffer is full and we need to wait for
-              // messages to flush.
+            mqtt_test_publish(state);
             cyw43_arch_lwip_end();
         } else {
             // DEBUG_printf(".");
         }
-
-        // vTaskDelay(pdMS_TO_TICKS(1000)); // Delay for 100 ms
     }
 
     cyw43_arch_deinit();
 }
 
-void read_accel_task(void *params) {
-    while (1) {
-        read_accel(accel_data);
-        read_mag(mag_data);
-
-        // get the heading from magnetometer data
-        global_heading = calculate_heading(mag_data[0], mag_data[1]);
-
-        // convert accelerometer data to g's
-        float accel_x = accel_data[0] * 0.000061;
-        float accel_y = accel_data[1] * 0.000061;
-        float accel_z = accel_data[2] * 0.000061;
-        process_accelerometer_data(accel_x, accel_y, accel_z);
-
-        // calculate pitch and roll angles of controller
-        global_pitch = 0.0;
-        global_roll = 0.0;
-
-        pitchAndRoll(&accel_x, &accel_y, &accel_z, &global_pitch, &global_roll);
-
-        // vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 200 ms
-    }
-}
-
-void write_accel_task(void *params) {
-    while (1) {
-        printf("Compass Heading: %.2f°    Pitch: %.2f Roll: %.2f\n",
-               global_heading, global_pitch, global_roll);
-
-        vTaskDelay(pdMS_TO_TICKS(200)); // Delay for 1000 ms
-    }
-}
-
-void vLaunch(void) {
-    TaskHandle_t task;
-    xTaskCreate(main_task, "TestMainThread", configMINIMAL_STACK_SIZE, NULL,
-                tskIDLE_PRIORITY + 2UL, &task);
-    xTaskCreate(read_accel_task, "ReadAccelTask", configMINIMAL_STACK_SIZE,
-                NULL, tskIDLE_PRIORITY + 2UL, &task);
-    // xTaskCreate(write_accel_task, "WriteAccelTask", configMINIMAL_STACK_SIZE,
-    //             NULL, TEST_TASK_PRIORITY, &task);
-    /* Start the tasks and timer running. */
-    vTaskStartScheduler();
-}
-
-int main(void) {
+// Main Function
+int main() {
     stdio_init_all();
-
     i2c_init_setup();
     accel_init();
     mag_init();
 
-    /* Configure the hardware ready to run the demo. */
-    const char *rtos_name;
-    rtos_name = "FreeRTOS";
-    printf("Starting %s on core 0:\n", rtos_name);
-    vLaunch();
+    TaskHandle_t read_motor_task_handle, mqtt_task_handle;
+    xTaskCreate(read_motor_task, "ReadMotorTask", configMINIMAL_STACK_SIZE,
+                NULL, TEST_TASK_PRIORITY, &read_motor_task_handle);
+    xTaskCreate(mqtt_task, "MqttTask", configMINIMAL_STACK_SIZE, NULL,
+                TEST_TASK_PRIORITY, &mqtt_task_handle);
+
+    vTaskStartScheduler();
+
+    while (1) {
+        tight_loop_contents();
+    }
     return 0;
 }

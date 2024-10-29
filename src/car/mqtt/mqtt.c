@@ -1,31 +1,13 @@
-#include "pico/cyw43_arch.h"
-#include "pico/stdlib.h"
-
-#include "lwip/api.h"
-#include "lwip/apps/httpd.h"
+#include "mqtt.h"
 #include "lwip/apps/mdns.h"
 #include "lwip/apps/mqtt.h"
-#include "lwip/apps/mqtt_priv.h"
-#include "lwip/dns.h"
-#include "lwip/init.h"
-#include "lwip/ip4_addr.h"
-#include "lwip/netdb.h"
-#include "lwip/pbuf.h"
-#include "lwip/sockets.h"
-#include "lwip/tcp.h"
-
-#include "FreeRTOS.h"
-#include "task.h"
+#include "pico/cyw43_arch.h"
+#include "pico/stdlib.h"
+#include <stdio.h>
 
 // #define MQTT_SERVER_IP "192.168.0.137"
 #define MQTT_SERVER_IP "172.20.10.2"
 #define MQTT_SERVER_PORT 1883
-
-#ifndef RUN_FREERTOS_ON_CORE
-#define RUN_FREERTOS_ON_CORE 0
-#endif
-
-#define TEST_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
 
 #define DEBUG_printf printf
 
@@ -36,6 +18,13 @@ typedef struct MQTT_CLIENT_T_ {
     u32_t counter;
     u32_t reconnect;
 } MQTT_CLIENT_T;
+
+static u32_t data_in = 0;
+static u8_t buffer[1025];
+static u8_t data_len = 0;
+static MQTT_CLIENT_T *g_state = NULL;
+
+static Compass *g_compass = NULL;
 
 // Perform initialisation
 static MQTT_CLIENT_T *mqtt_client_init(void) {
@@ -48,13 +37,8 @@ static MQTT_CLIENT_T *mqtt_client_init(void) {
     return state;
 }
 
-u32_t data_in = 0;
-
-u8_t buffer[1025];
-u8_t data_len = 0;
-
 static void mqtt_pub_start_cb(void *arg, const char *topic, u32_t tot_len) {
-    DEBUG_printf("mqtt_pub_start_cb: topic %s\n", topic);
+    // DEBUG_printf("mqtt_pub_start_cb: topic %s\n", topic);
 
     if (tot_len > 1024) {
         DEBUG_printf("Message length exceeds buffer size, discarding");
@@ -66,16 +50,24 @@ static void mqtt_pub_start_cb(void *arg, const char *topic, u32_t tot_len) {
 
 static void mqtt_pub_data_cb(void *arg, const u8_t *data, u16_t len,
                              u8_t flags) {
-    if (data_in > 0) {
+    if ((flags & MQTT_DATA_FLAG_LAST) && data_in > 0) {
         data_in -= len;
         memcpy(&buffer[data_len], data, len);
         data_len += len;
 
         if (data_in == 0) {
             buffer[data_len] = 0;
-            DEBUG_printf("Message received: %s\n", &buffer);
+            // sscanf(buffer, "{p:%d,r:%d,y:%d}", &(g_compass->p),
+            // &(g_compass->r),
+            //        &(g_compass->y));
+            // printf("Compass data: p=%d, r=%d, y=%d\n", g_compass->p,
+            //    g_compass->r, g_compass->y);
+            // DEBUG_printf("Message received: %s\n", &buffer);
         }
     }
+
+    // printf("Incoming publish payload with length %d, flags %u\n", len,
+    //        (unsigned int)flags);
 }
 
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg,
@@ -87,17 +79,17 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg,
     }
 }
 
-void mqtt_pub_request_cb(void *arg, err_t err) {
+static void mqtt_pub_request_cb(void *arg, err_t err) {
     MQTT_CLIENT_T *state = (MQTT_CLIENT_T *)arg;
     DEBUG_printf("mqtt_pub_request_cb: err %d\n", err);
     state->received++;
 }
 
-void mqtt_sub_request_cb(void *arg, err_t err) {
+static void mqtt_sub_request_cb(void *arg, err_t err) {
     DEBUG_printf("mqtt_sub_request_cb: err %d\n", err);
 }
 
-err_t mqtt_test_publish(MQTT_CLIENT_T *state) {
+static err_t mqtt_test_publish(MQTT_CLIENT_T *state) {
     char buffer[128];
 
     sprintf(buffer, "{\"message\":\"hello from picow %d / %d\"}",
@@ -118,16 +110,16 @@ err_t mqtt_test_publish(MQTT_CLIENT_T *state) {
     return err;
 }
 
-err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
+static err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
     struct mqtt_connect_client_info_t ci;
     err_t err;
 
     memset(&ci, 0, sizeof(ci));
 
-    ci.client_id = "PicoW";
+    ci.client_id = "Car";
     ci.client_user = NULL;
     ci.client_pass = NULL;
-    ci.keep_alive = 0;
+    ci.keep_alive = 60;
     ci.will_topic = NULL;
     ci.will_msg = NULL;
     ci.will_retain = 0;
@@ -144,12 +136,6 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
     }
 
     return err;
-}
-
-void mqtt_run_test(MQTT_CLIENT_T *state) {
-
-    while (true) {
-    }
 }
 
 // Return some characters from the ascii representation of the mac address
@@ -171,7 +157,94 @@ static size_t get_mac_ascii(int idx, size_t chr_off, size_t chr_len,
     return dest - dest_in;
 }
 
-void main_task(__unused void *params) {
+void get_compass_data(Compass *compass) {
+    static bool subscribed = false;
+    sscanf(buffer, "{p:%d,r:%d,y:%d}", &(compass->p), &(compass->r),
+           &(compass->y));
+
+    if (mqtt_client_is_connected(g_state->mqtt_client)) {
+        cyw43_arch_lwip_begin();
+
+        if (!subscribed) {
+            printf("Subscribing to topic pico_w/car\n");
+            mqtt_sub_unsub(g_state->mqtt_client, "pico_w/car", 0,
+                           mqtt_sub_request_cb, 0, 1);
+            subscribed = true;
+        }
+        cyw43_arch_lwip_end();
+    }
+}
+// }
+
+// void get_compass_data(Compass *compass) {
+//     g_compass = compass;
+//     if (cyw43_arch_init()) {
+//         printf("failed to initialise\n");
+//         return;
+//     }
+
+//     cyw43_arch_enable_sta_mode();
+
+//     char hostname[sizeof(CYW43_HOST_NAME) + 4];
+//     memcpy(&hostname[0], CYW43_HOST_NAME, sizeof(CYW43_HOST_NAME) - 1);
+//     get_mac_ascii(CYW43_HAL_MAC_WLAN0, 8, 4,
+//                   &hostname[sizeof(CYW43_HOST_NAME) - 1]);
+//     hostname[sizeof(hostname) - 1] = '\0';
+//     netif_set_hostname(&cyw43_state.netif[CYW43_ITF_STA], hostname);
+
+//     printf("Connecting to WiFi...\n");
+//     while (cyw43_arch_wifi_connect_timeout_ms(
+//         WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA3_WPA2_AES_PSK, 30000)) {
+//         printf("SSID: %s\n" WIFI_SSID);
+//         printf("\nPW: %s\n", WIFI_PASSWORD);
+//         printf("failed to connect.\n");
+//     }
+//     printf("Connected.\n");
+
+//     mdns_resp_init();
+//     printf("mdns host name %s.local\n", hostname);
+//     mdns_resp_add_netif(&cyw43_state.netif[CYW43_ITF_STA], hostname);
+
+//     printf("\nReady, running on host %s\n",
+//            ip4addr_ntoa(netif_ip4_addr(netif_list)));
+
+//     MQTT_CLIENT_T *state = mqtt_client_init();
+//     ipaddr_aton(MQTT_SERVER_IP, &(state->remote_addr));
+
+//     state->mqtt_client = mqtt_client_new();
+//     state->counter = 0;
+
+//     if (state->mqtt_client == NULL) {
+//         DEBUG_printf("Failed to create new mqtt client\n");
+//         return;
+//     }
+
+//     while (mqtt_test_connect(state) != ERR_OK) {
+//         printf("attempting to connect...... \n");
+//     }
+
+//     absolute_time_t timeout = nil_time;
+//     bool subscribed = false;
+//     mqtt_set_inpub_callback(state->mqtt_client, mqtt_pub_start_cb,
+//                             mqtt_pub_data_cb, mqtt_pub_data_cb);
+
+//     while (true) {
+//         if (mqtt_client_is_connected(state->mqtt_client)) {
+
+//             if (!subscribed) {
+//                 cyw43_arch_lwip_begin();
+//                 mqtt_subscribe(state->mqtt_client, "pico_w/car", 0,
+//                                mqtt_sub_request_cb, state);
+//                 subscribed = true;
+//                 cyw43_arch_lwip_end();
+//             }
+//         }
+//     }
+
+//     cyw43_arch_deinit();
+// }
+
+void init_mqtt() {
     if (cyw43_arch_init()) {
         printf("failed to initialise\n");
         return;
@@ -202,72 +275,20 @@ void main_task(__unused void *params) {
     printf("\nReady, running on host %s\n",
            ip4addr_ntoa(netif_ip4_addr(netif_list)));
 
-    MQTT_CLIENT_T *state = mqtt_client_init();
-    ipaddr_aton(MQTT_SERVER_IP, &(state->remote_addr));
+    g_state = mqtt_client_init();
+    ipaddr_aton(MQTT_SERVER_IP, &(g_state->remote_addr));
 
-    state->mqtt_client = mqtt_client_new();
-    state->counter = 0;
+    g_state->mqtt_client = mqtt_client_new();
+    g_state->counter = 0;
 
-    if (state->mqtt_client == NULL) {
+    if (g_state->mqtt_client == NULL) {
         DEBUG_printf("Failed to create new mqtt client\n");
         return;
     }
 
-    while (mqtt_test_connect(state) != ERR_OK) {
+    while (mqtt_test_connect(g_state) != ERR_OK) {
         printf("attempting to connect...... \n");
-        vTaskDelay(pdMS_TO_TICKS(1000));
     }
-
-    absolute_time_t timeout = nil_time;
-    bool subscribed = false;
-    mqtt_set_inpub_callback(state->mqtt_client, mqtt_pub_start_cb,
+    mqtt_set_inpub_callback(g_state->mqtt_client, mqtt_pub_start_cb,
                             mqtt_pub_data_cb, 0);
-
-    while (true) {
-        if (mqtt_client_is_connected(state->mqtt_client)) {
-            cyw43_arch_lwip_begin();
-
-            if (!subscribed) {
-                mqtt_sub_unsub(state->mqtt_client, "pico_w/recv", 0,
-                               mqtt_sub_request_cb, 0, 1);
-                subscribed = true;
-            }
-
-            if (mqtt_test_publish(state) == ERR_OK) {
-                if (state->counter != 0) {
-                    DEBUG_printf("published %d\n", state->counter);
-                }
-                timeout = make_timeout_time_ms(5000);
-                state->counter++;
-            } // else ringbuffer is full and we need to wait for
-              // messages to flush.
-            cyw43_arch_lwip_end();
-        } else {
-            // DEBUG_printf(".");
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Delay for 100 ms
-    }
-
-    cyw43_arch_deinit();
-}
-
-void vLaunch(void) {
-    TaskHandle_t task;
-    xTaskCreate(main_task, "TestMainThread", configMINIMAL_STACK_SIZE, NULL,
-                TEST_TASK_PRIORITY, &task);
-
-    /* Start the tasks and timer running. */
-    vTaskStartScheduler();
-}
-
-int main(void) {
-    stdio_init_all();
-
-    /* Configure the hardware ready to run the demo. */
-    const char *rtos_name;
-    rtos_name = "FreeRTOS";
-    printf("Starting %s on core 0:\n", rtos_name);
-    vLaunch();
-    return 0;
 }
