@@ -1,29 +1,12 @@
-#include "pico/stdlib.h"
-#include <stdio.h>
-#include "hardware/gpio.h"
-#include "hardware/timer.h"
-#include "FreeRTOS.h"
-#include "task.h"
-#include <stdlib.h>
+// ultrasonic.c
 
-#define TRIGPIN 1  // Trigger pin
-#define ECHOPIN 0  // Echo pin
+#include "ultrasonic.h"
 
+// Constants and global variables
 const int timeout = 50000;  // Timeout for ultrasonic sensor (~8.6 meters)
-
 volatile absolute_time_t start_time;  // Start time for echo pulse
 volatile uint64_t pulse_width = 0;    // Pulse width in microseconds
 volatile bool obstacleDetected = false;  // Flag to detect obstacles within 10 cm
-
-// Kalman filter structure
-typedef struct kalman_state_
-{
-    double q;  // Process noise covariance
-    double r;  // Measurement noise covariance
-    double x;  // Estimated value
-    double p;  // Estimation error covariance
-    double k;  // Kalman gain
-} kalman_state;
 
 // Initialize Kalman filter
 kalman_state *kalman_init(double q, double r, double p, double initial_value)
@@ -151,27 +134,6 @@ void ultrasonic_task(void *pvParameters)
             printf("Out of range or timeout\n");  // Print timeout message if no valid distance is detected
         }
 
-        vTaskDelay(pdMS_TO_TICKS(500));  // Delay for 500 ms before the next measurement
+        vTaskDelay(pdMS_TO_TICKS(100));  // Delay for 500 ms before the next measurement
     }
-}
-
-int main()
-{
-    stdio_init_all();  // Initialize serial communication (USB output)
-    printf("Setting up ultrasonic sensor pins\n");
-
-    setupUltrasonicPins();  // Configure pins for the ultrasonic sensor
-
-    // Initialize Kalman filter with example parameters
-    kalman_state *state = kalman_init(1, 100, 1, 0);
-
-    // Create a task for ultrasonic sensor measurements
-    xTaskCreate(ultrasonic_task, "Ultrasonic Task", 1024, (void *)state, 1, NULL);
-
-    // Start the FreeRTOS scheduler (handles task switching)
-    vTaskStartScheduler();
-
-    // Infinite loop (this should never be reached due to the FreeRTOS scheduler)
-    while (1);
-    return 0;
 }
