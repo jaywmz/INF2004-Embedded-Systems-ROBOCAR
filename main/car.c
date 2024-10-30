@@ -6,7 +6,7 @@
 #include "ultrasonic.h"  // Include ultrasonic header
 #include "pid_motor.h"   // Include PID motor header
 
-#define STOPPING_DISTANCE 10.0   // Target stopping distance
+#define STOPPING_DISTANCE 22.0   // Target stopping distance
 
 // Global variable to control motor state
 bool ultrasonic_override = false;
@@ -46,7 +46,7 @@ int main() {
     double process_noise_covariance = 0.05;
     double measurement_noise_covariance = 50.0;
     double estimation_error_covariance = 1.0;
-    double initial_value = 10.0;
+    double initial_value = 22.0;
     kalman_state *state = kalman_init(process_noise_covariance, measurement_noise_covariance, estimation_error_covariance, initial_value);
 
     // Initialize motor control pins and PWM for both motors
