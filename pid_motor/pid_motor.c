@@ -1,7 +1,7 @@
 #include "pid_motor.h"
 
 // Initialize duty cycle variables
-int duty_cycle_motor1 = 6250;  // Start with a 50% duty cycle for motor 1
+int duty_cycle_motor1 = 11250;  // Start with a 50% duty cycle for motor 1
 int duty_cycle_motor2 = 6250;  // Start with a 50% duty cycle for motor 2
 
 // Function to set up PWM for speed control on a given motor
