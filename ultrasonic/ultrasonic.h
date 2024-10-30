@@ -12,8 +12,8 @@
 #include <stdlib.h>
 
 // Define pins for ultrasonic sensor
-#define TRIGPIN 1
-#define ECHOPIN 0
+#define TRIGPIN 9
+#define ECHOPIN 8
 
 // Kalman filter structure
 typedef struct kalman_state_

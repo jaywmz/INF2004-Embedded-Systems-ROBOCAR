@@ -10,7 +10,7 @@
 #define STOPPING_DISTANCE 10.0   // Target stopping distance
 #define BUFFER_ZONE 2.0          // Buffer zone around the target distance (e.g., ±2 cm)
 
-// Task to test ultrasonic sensor feedback
+// Task to test and maintain ultrasonic sensor feedback at 10 cm
 void ultrasonic_test_task(void *pvParameters) {
     kalman_state *state = (kalman_state *)pvParameters;  // Retrieve Kalman filter state
 
@@ -20,11 +20,14 @@ void ultrasonic_test_task(void *pvParameters) {
         // Print the current distance for debugging
         printf("Measured Distance: %.2f cm\n", distance_cm);
 
-        // Check if distance is within the buffer zone of the stopping distance
+        // Check if distance is within the buffer zone around the target distance
         if (distance_cm > 0 && distance_cm <= (STOPPING_DISTANCE + BUFFER_ZONE) &&
             distance_cm >= (STOPPING_DISTANCE - BUFFER_ZONE)) {
-            printf("Object detected within buffer zone around %.2f cm. Test complete.\n", STOPPING_DISTANCE);
-            break;  // Exit the loop once the object is detected within the buffer range
+            printf("Object is within buffer zone around %.2f cm. Continuing detection...\n", STOPPING_DISTANCE);
+        } else if (distance_cm > 0 && distance_cm < (STOPPING_DISTANCE - BUFFER_ZONE)) {
+            printf("Object too close! Distance: %.2f cm\n", distance_cm);
+        } else if (distance_cm > (STOPPING_DISTANCE + BUFFER_ZONE)) {
+            printf("Object too far! Distance: %.2f cm\n", distance_cm);
         }
 
         vTaskDelay(pdMS_TO_TICKS(50));  // Loop delay set to 50 ms for frequent updates
@@ -42,7 +45,7 @@ int main() {
     // double process_noise_covariance = 0.05;  // Reduced process noise for smoother filtering
     // double measurement_noise_covariance = 50.0;  // Adjusted for expected measurement noise
     // double estimation_error_covariance = 1.0;
-    // double initial_value = 0.0;
+    // double initial_value = 10;
 
     // // Initialize Kalman filter with tuned parameters
     // kalman_state *state = kalman_init(process_noise_covariance, measurement_noise_covariance, estimation_error_covariance, initial_value);
