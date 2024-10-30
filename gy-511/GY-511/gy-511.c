@@ -1,8 +1,4 @@
-#include <stdio.h>
-#include <math.h>
-#include <stdlib.h>
-#include "pico/stdlib.h"
-#include "hardware/i2c.h"
+#include "gy-511.h"
 
 // I2C Defines
 #define SDA_PIN 4
@@ -50,7 +46,7 @@ void accel_init() {
     // Enable accelerometer, 100Hz data rate, enable all axes
     write_register(ACC_ADDR, CTRL_REG1_A, 0x57);
 
-    // Set sensitivity scale factor, enable high res mode
+    // Set sensitivity scale factor to +-2gs, enable high res mode
     write_register(ACC_ADDR, CTRL_REG4_A, 0x08); 
 }
 
@@ -65,19 +61,55 @@ void read_accel(int16_t* accel_data) {
     uint8_t buffer[6];
     read_registers(ACC_ADDR, ACC_OUT_X_L | 0x80, buffer, 6);
 
-    accel_data[0] = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
-    accel_data[1] = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
-    accel_data[2] = (int16_t)(buffer[5] << 8 | buffer[4]); // Z-axis
+    // accel_data[0] = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
+    // accel_data[1] = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
+    // accel_data[2] = (int16_t)(buffer[5] << 8 | buffer[4]); // Z-axis
+
+    // Raw data
+    int16_t raw_x = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
+    int16_t raw_y = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
+    int16_t raw_z = (int16_t)(buffer[5] << 8 | buffer[4]); // Z-axis
+
+    // Static variables to store previous filtered values
+    static float filtered_x = 0.0f;
+    static float filtered_y = 0.0f;
+    static float filtered_z = 0.0f;
+
+    // Apply low-pass filter to each axis
+    filtered_x = ALPHA * raw_x + (1 - ALPHA) * filtered_x;
+    filtered_y = ALPHA * raw_y + (1 - ALPHA) * filtered_y;
+    filtered_z = ALPHA * raw_z + (1 - ALPHA) * filtered_z;
+
+    // Store the filtered results in accel_data output array
+    accel_data[0] = (int16_t)filtered_x;
+    accel_data[1] = (int16_t)filtered_y;
+    accel_data[2] = (int16_t)filtered_z;
 }
 
-// read data from magnetometer
+// read data from magnetometer, and low-pass filter using exponential moving average
 void read_mag(int16_t* mag_data) {
     uint8_t buffer[6];
     read_registers(MAG_ADDR, MAG_OUT_X_H, buffer, 6);
 
-    mag_data[0] = (int16_t)(buffer[0] << 8 | buffer[1]); // X-axis
-    mag_data[1] = (int16_t)(buffer[4] << 8 | buffer[5]); // Y-axis
-    mag_data[2] = (int16_t)(buffer[2] << 8 | buffer[3]); // Z-axis
+    // Raw data
+    int16_t raw_x = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
+    int16_t raw_y = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
+    int16_t raw_z = (int16_t)(buffer[5] << 8 | buffer[4]); // Z-axis
+
+    // Static variables to store previous filtered values
+    static float filtered_x = 0.0f;
+    static float filtered_y = 0.0f;
+    static float filtered_z = 0.0f;
+
+    // Apply low-pass filter to each axis
+    filtered_x = ALPHA * raw_x + (1 - ALPHA) * filtered_x;
+    filtered_y = ALPHA * raw_y + (1 - ALPHA) * filtered_y;
+    filtered_z = ALPHA * raw_z + (1 - ALPHA) * filtered_z;
+
+    // Store the filtered results in accel_data output array
+    mag_data[0] = (int16_t)filtered_x;
+    mag_data[1] = (int16_t)filtered_y;
+    mag_data[2] = (int16_t)filtered_z;
 }
 
 void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
@@ -93,24 +125,13 @@ void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
     }
 }
 
-#define MAX_PITCH 30 // Max pitch angle for full speed
-#define MAX_ROLL 30 // Max roll angle for full turn
-#define MAX_DUTY_CYCLE 100 // Max PWM duty cycle percentage
-#define MIN_DUTY_CYCLE 50 // Minimum to ensure motor response
-#define MAX_TURN_DUTY_CYCLE 50
-#define ALPHA 0.8 // Smoothing factor
-
-uint16_t previous_left_duty = 0;
-uint16_t previous_right_duty = 0;
-
-void update_motor_duty(int16_t *pitch, int16_t *roll) {
-    bool forward;
-
+void update_motor_duty(int16_t *pitch, int16_t *roll, uint16_t *prev_left_duty, uint16_t *prev_right_duty, 
+                        bool *forward, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle) {
     if (*pitch < 0) {
-        forward = false;
+        *forward = false;
     }
     else {
-        forward = true;
+        *forward = true;
     }
 
     if (abs(*pitch) > 10) {
@@ -134,22 +155,24 @@ void update_motor_duty(int16_t *pitch, int16_t *roll) {
         left_motor_duty = fmin(fmax(left_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
         right_motor_duty = fmin(fmax(right_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
 
-        // Apply smoothing filter
-        left_motor_duty = ALPHA * left_motor_duty + (1 - ALPHA) * previous_left_duty;
-        right_motor_duty = ALPHA * right_motor_duty + (1 - ALPHA) * previous_right_duty;
+        // // Apply smoothing filter
+        // left_motor_duty = ALPHA * left_motor_duty + (1 - ALPHA) * *prev_left_duty;
+        // right_motor_duty = ALPHA * right_motor_duty + (1 - ALPHA) * *prev_right_duty;
 
         // Round to integer
-        uint16_t left_dutyCycle = (uint16_t)round(left_motor_duty);
-        uint16_t right_dutyCycle = (uint16_t)round(right_motor_duty);
+        *left_dutyCycle = (uint16_t)round(left_motor_duty);
+        *right_dutyCycle = (uint16_t)round(right_motor_duty);
 
-        previous_left_duty = left_motor_duty;
-        previous_right_duty = right_motor_duty;
-
-        printf("Forwards: %d, Left Motor Duty: %u, Right Motor Duty: %u\n", forward, left_dutyCycle, right_dutyCycle);
+        // *prev_left_duty = left_motor_duty;
+        // *prev_right_duty = right_motor_duty;
     }
     else {
         return;
     }
+}
+
+void print_controls(bool *forward, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle) {
+    printf("Forwards: %d, Left Motor duty-cycle: %u%%, Right Motor duty-cycle: %u\n", forward, left_dutyCycle, right_dutyCycle);
 }
 
 int main() {
@@ -167,6 +190,13 @@ int main() {
     int16_t roll = 0;
     int16_t yaw = 0;
 
+    uint16_t prev_left_duty = 0;
+    uint16_t prev_right_duty = 0;
+
+    bool forward;
+    uint16_t left_dutyCycle;
+    uint16_t right_dutyCycle;
+
     while (1) {
         read_accel(accel_data);
         read_mag(mag_data);
@@ -175,7 +205,10 @@ int main() {
         update_orientation(accel_data[0], accel_data[1], accel_data[2], mag_data[0], mag_data[1], mag_data[2], &pitch, &roll, &yaw);
 
         // translate pitch and roll to duty cycle for wheels
-        update_motor_duty(&pitch, &roll);
+        update_motor_duty(&pitch, &roll, &prev_left_duty, &prev_right_duty, &forward, &left_dutyCycle, &right_dutyCycle);
+
+        // Print controls
+        print_controls(&forward, &left_dutyCycle, &right_dutyCycle);
 
         sleep_ms(100);
     }        
