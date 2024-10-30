@@ -134,6 +134,6 @@ void ultrasonic_task(void *pvParameters)
             printf("Out of range or timeout\n");  // Print timeout message if no valid distance is detected
         }
 
-        vTaskDelay(pdMS_TO_TICKS(100));  // Delay for 500 ms before the next measurement
+        // vTaskDelay(pdMS_TO_TICKS(50));  // Delay for 500 ms before the next measurement
     }
 }

@@ -30,9 +30,11 @@ void check_ultrasonic_distance(void *pvParameters) {
         } else {
             // No object within range; disable override
             ultrasonic_override = false;
+            rotate_both_motors("forward", duty_cycle_motor1, duty_cycle_motor2);
+            printf("Moving foward. Distance: %.2f cm\n", distance_cm);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(100));  // Delay to avoid constant checking (adjust as needed)
+        // vTaskDelay(pdMS_TO_TICKS(10));  // Delay to avoid constant checking (adjust as needed)
     }
 }
 
