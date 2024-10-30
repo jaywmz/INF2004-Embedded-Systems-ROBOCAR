@@ -22,12 +22,12 @@
 #define CTRL_REG5_A 0x24
 #define MR_REG_M 0x02
 
-#define MAX_PITCH 50 // Max pitch angle for full speed
-#define MAX_ROLL 50 // Max roll angle for full turn
-#define MAX_DUTY_CYCLE 100 // Max PWM duty cycle percentage
-#define MIN_DUTY_CYCLE 10 // Minimum to ensure motor response
-#define MAX_TURN_DUTY_CYCLE 50
-#define ALPHA 0.8 // Smoothing factor
+#define MAX_PITCH 90.0f // Max pitch angle for full speed
+#define MAX_ROLL 90.0f // Max roll angle for full turn
+#define MAX_DUTY_CYCLE 12500.0f // Max PWM duty cycle percentage
+#define MIN_DUTY_CYCLE 6250.5f // Minimum to ensure motor response
+#define MAX_TURN_DUTY_CYCLE 6250.0f
+#define ALPHA 0.5 // Smoothing factor
 
 void i2c_init_setup();
 void write_register(uint8_t addr, uint8_t reg, uint8_t value);
@@ -39,7 +39,7 @@ void read_mag(int16_t* mag_data);
 void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
                         int16_t mag_x, int16_t mag_y, int16_t mag_z, int16_t *pitch, int16_t *roll, int16_t *yaw);
 void update_motor_duty(int16_t *pitch, int16_t *roll, uint16_t *prev_left_duty, uint16_t *prev_right_duty, 
-                        bool *forward, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle);
-void print_controls(bool *forward, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle);
+                        char *forward, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle);
+void print_controls(char *forward, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle);
 
 #endif

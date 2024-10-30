@@ -1,23 +1,5 @@
 #include "gy-511.h"
 
-// I2C Defines
-#define SDA_PIN 4
-#define SCL_PIN 5
-
-// Accelerometer Address
-#define ACC_ADDR 0x19
-
-// Magnetometer Address
-#define MAG_ADDR 0x1E
-
-// Register Addresses for Accelerometer and Magnetometer
-#define ACC_OUT_X_L 0x28
-#define MAG_OUT_X_H 0x03
-#define CTRL_REG1_A 0x20
-#define CTRL_REG4_A 0x23
-#define CTRL_REG5_A 0x24
-#define MR_REG_M 0x02
-
 // set up i2c interface
 void i2c_init_setup() {
     i2c_init(i2c_default, 400 * 1000); // 400kHz
@@ -61,10 +43,6 @@ void read_accel(int16_t* accel_data) {
     uint8_t buffer[6];
     read_registers(ACC_ADDR, ACC_OUT_X_L | 0x80, buffer, 6);
 
-    // accel_data[0] = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
-    // accel_data[1] = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
-    // accel_data[2] = (int16_t)(buffer[5] << 8 | buffer[4]); // Z-axis
-
     // Raw data
     int16_t raw_x = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
     int16_t raw_y = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
@@ -91,25 +69,29 @@ void read_mag(int16_t* mag_data) {
     uint8_t buffer[6];
     read_registers(MAG_ADDR, MAG_OUT_X_H, buffer, 6);
 
-    // Raw data
-    int16_t raw_x = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
-    int16_t raw_y = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
-    int16_t raw_z = (int16_t)(buffer[5] << 8 | buffer[4]); // Z-axis
+    mag_data[0] = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
+    mag_data[1] = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
+    mag_data[2] = (int16_t)(buffer[5] << 8 | buffer[4]); // Z-axis
 
-    // Static variables to store previous filtered values
-    static float filtered_x = 0.0f;
-    static float filtered_y = 0.0f;
-    static float filtered_z = 0.0f;
+    // // Raw data
+    // int16_t raw_x = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
+    // int16_t raw_y = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
+    // int16_t raw_z = (int16_t)(buffer[5] << 8 | buffer[4]); // Z-axis
 
-    // Apply low-pass filter to each axis
-    filtered_x = ALPHA * raw_x + (1 - ALPHA) * filtered_x;
-    filtered_y = ALPHA * raw_y + (1 - ALPHA) * filtered_y;
-    filtered_z = ALPHA * raw_z + (1 - ALPHA) * filtered_z;
+    // // Static variables to store previous filtered values
+    // static float filtered_x = 0.0f;
+    // static float filtered_y = 0.0f;
+    // static float filtered_z = 0.0f;
 
-    // Store the filtered results in accel_data output array
-    mag_data[0] = (int16_t)filtered_x;
-    mag_data[1] = (int16_t)filtered_y;
-    mag_data[2] = (int16_t)filtered_z;
+    // // Apply low-pass filter to each axis
+    // filtered_x = ALPHA * raw_x + (1 - ALPHA) * filtered_x;
+    // filtered_y = ALPHA * raw_y + (1 - ALPHA) * filtered_y;
+    // filtered_z = ALPHA * raw_z + (1 - ALPHA) * filtered_z;
+
+    // // Store the filtered results in accel_data output array
+    // mag_data[0] = (int16_t)filtered_x;
+    // mag_data[1] = (int16_t)filtered_y;
+    // mag_data[2] = (int16_t)filtered_z;
 }
 
 void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
@@ -123,56 +105,70 @@ void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
     if (*yaw < 0) {
         *yaw += 360;
     }
+
+    // printf("Pitch: %d, Roll: %d, Yaw: %d\n", *pitch, *roll, *yaw);
 }
 
 void update_motor_duty(int16_t *pitch, int16_t *roll, uint16_t *prev_left_duty, uint16_t *prev_right_duty, 
-                        bool *forward, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle) {
-    if (*pitch < 0) {
-        *forward = false;
+                        char *direction, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle) {
+    if (*pitch > 10) {
+        *direction = 'f';
+    }
+    else if (*pitch < -10) {
+        *direction = 'b';
     }
     else {
-        *forward = true;
+        *direction = 's';
     }
 
+    // Pitch angle threshold of 10 degrees
     if (abs(*pitch) > 10) {
         // Finds the proportionately equivalent duty cycle of the given pitch
-        float pitch_to_dutyCycle = (abs(*pitch) / MAX_PITCH) * MAX_DUTY_CYCLE;
+        float pitch_to_dutyCycle = ((float)abs(*pitch) / MAX_PITCH) * MAX_DUTY_CYCLE;
 
-        // Limits forward duty cycle within min and max
-        float forward_dutyCycle = fmin(fmax(pitch_to_dutyCycle, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
+        // Limits base duty cycle within min and max
+        float base_dutyCycle = fmin(fmax(pitch_to_dutyCycle, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
 
-        // Calculate turning_speed from roll, allowing for left and right turns
-        float turning_speed = (*roll / MAX_ROLL) * MAX_TURN_DUTY_CYCLE;
-
-        // Clamp turning_speed to within [-MAX_TURN_DUTY_CYCLE, MAX_TURN_DUTY_CYCLE]
-        turning_speed = fmin(fmax(turning_speed, -MAX_TURN_DUTY_CYCLE), MAX_TURN_DUTY_CYCLE);
+        // same 10 angle threshold for roll angle
+        float turning_speed;
+        if (abs(*roll) > 10) {
+            // Calculate turning_speed from roll, allowing for left and right turns
+            turning_speed = (*roll / MAX_ROLL) * MAX_TURN_DUTY_CYCLE;
+            // Clamp turning_speed to within [-MAX_TURN_DUTY_CYCLE, MAX_TURN_DUTY_CYCLE]
+            turning_speed = fmin(fmax(turning_speed, -MAX_TURN_DUTY_CYCLE), MAX_TURN_DUTY_CYCLE);
+        }
+        else {
+            turning_speed = 0.0f;
+        }
 
         // Calculate left and right motor duties based on forward and turning speeds
-        float left_motor_duty = forward_dutyCycle + turning_speed;
-        float right_motor_duty = forward_dutyCycle - turning_speed;
+        float left_motor_duty = base_dutyCycle + turning_speed;
+        float right_motor_duty = base_dutyCycle - turning_speed;
 
         // Clamp final motor duty cycles to stay within [MIN_DUTY_CYCLE, MAX_DUTY_CYCLE]
         left_motor_duty = fmin(fmax(left_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
         right_motor_duty = fmin(fmax(right_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
 
-        // // Apply smoothing filter
-        // left_motor_duty = ALPHA * left_motor_duty + (1 - ALPHA) * *prev_left_duty;
-        // right_motor_duty = ALPHA * right_motor_duty + (1 - ALPHA) * *prev_right_duty;
+        // Apply smoothing filter
+        left_motor_duty = ALPHA * left_motor_duty + (1 - ALPHA) * *prev_left_duty;
+        right_motor_duty = ALPHA * right_motor_duty + (1 - ALPHA) * *prev_right_duty;
 
         // Round to integer
         *left_dutyCycle = (uint16_t)round(left_motor_duty);
         *right_dutyCycle = (uint16_t)round(right_motor_duty);
 
-        // *prev_left_duty = left_motor_duty;
-        // *prev_right_duty = right_motor_duty;
+        *prev_left_duty = left_motor_duty;
+        *prev_right_duty = right_motor_duty;
     }
     else {
-        return;
+        // pitch angle does not pass threshold so give 0 dutycycle
+        *left_dutyCycle = 0;
+        *right_dutyCycle = 0;
     }
 }
 
-void print_controls(bool *forward, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle) {
-    printf("Forwards: %d, Left Motor duty-cycle: %u%%, Right Motor duty-cycle: %u\n", forward, left_dutyCycle, right_dutyCycle);
+void print_controls(char *direction, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle) {
+    printf("Direction: %c, L-dc: %u, R-dc: %u\n", *direction, *left_dutyCycle, *right_dutyCycle);
 }
 
 int main() {
@@ -193,7 +189,7 @@ int main() {
     uint16_t prev_left_duty = 0;
     uint16_t prev_right_duty = 0;
 
-    bool forward;
+    char direction;
     uint16_t left_dutyCycle;
     uint16_t right_dutyCycle;
 
@@ -205,10 +201,10 @@ int main() {
         update_orientation(accel_data[0], accel_data[1], accel_data[2], mag_data[0], mag_data[1], mag_data[2], &pitch, &roll, &yaw);
 
         // translate pitch and roll to duty cycle for wheels
-        update_motor_duty(&pitch, &roll, &prev_left_duty, &prev_right_duty, &forward, &left_dutyCycle, &right_dutyCycle);
+        update_motor_duty(&pitch, &roll, &prev_left_duty, &prev_right_duty, &direction, &left_dutyCycle, &right_dutyCycle);
 
         // Print controls
-        print_controls(&forward, &left_dutyCycle, &right_dutyCycle);
+        print_controls(&direction, &left_dutyCycle, &right_dutyCycle);
 
         sleep_ms(100);
     }        
