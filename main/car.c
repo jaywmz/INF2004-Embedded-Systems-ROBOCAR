@@ -13,59 +13,96 @@
 // Global variable to control motor state
 bool ultrasonic_override = false;
 
-// Function to rotate the car 90 degrees to the right
+// Update rotate_90_degrees_right to use the 35% speed:
 void rotate_90_degrees_right() {
-    // Assuming the car can rotate 90 degrees to the right by running the motors in opposite directions for a specific time
+    printf("Executing 90-degree right turn\n");
     rotate_motor("forward", MOTOR1_IN1_PIN, MOTOR1_IN2_PIN);
     rotate_motor("backward", MOTOR2_IN1_PIN, MOTOR2_IN2_PIN);
-    start_motor(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), duty_cycle_motor1);
-    start_motor(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), duty_cycle_motor2);
-    vTaskDelay(pdMS_TO_TICKS(1000));  // Adjust this delay to achieve a 90-degree turn
+    start_motor(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), NORMAL_DUTY_CYCLE);
+    start_motor(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), NORMAL_DUTY_CYCLE);
+    vTaskDelay(pdMS_TO_TICKS(1000));
     stop_motor(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN));
     stop_motor(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN));
+    printf("Turn complete\n");
 }
 
-// Function to move the car forward for a specified distance over a specified time
+// Update move_forward_distance to use the 35% speed:
 void move_forward_distance(double distance_cm, int time_ms) {
-    // Calculate the duty cycle needed to move the specified distance over the specified time
-    int duty_cycle = (int)((distance_cm / MOVE_DISTANCE_CM) * 12500);  // Adjust this calculation as needed
-
-    rotate_both_motors("forward", duty_cycle, duty_cycle);
+    printf("Moving forward %.2f cm\n", distance_cm);
+    rotate_both_motors("forward", NORMAL_DUTY_CYCLE, NORMAL_DUTY_CYCLE);
     vTaskDelay(pdMS_TO_TICKS(time_ms));
     stop_motor(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN));
     stop_motor(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN));
+    printf("Forward movement complete\n");
 }
 
-// Function to check distance and override motor control if object is close
 void check_ultrasonic_distance(void *pvParameters) {
-    kalman_state *state = (kalman_state *)pvParameters;  // Retrieve Kalman filter state
+    kalman_state *state = (kalman_state *)pvParameters;
+    
+    // Initialize PID controller with gentler gains
+    pid_init(&distance_pid, 
+            225.0,   // Proportional gain
+            6.0,     // Integral gain
+            35.0,    // Derivative gain
+            TARGET_DISTANCE,
+            MIN_DUTY_CYCLE,
+            NORMAL_DUTY_CYCLE
+    );
+
+    bool turning_flag = false;  // Add flag to prevent multiple turns
 
     while (true) {
-        double distance_cm = getCm(state);  // Get distance from ultrasonic sensor
-
-        // Print the current distance for debugging
+        double distance_cm = getCm(state);
         printf("Measured Distance: %.2f cm\n", distance_cm);
 
-        if (distance_cm > 0 && distance_cm <= STOPPING_DISTANCE) {
-            // Object detected within stopping distance; set override to true and stop motors
-            ultrasonic_override = true;
-            stop_motor(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN));
-            stop_motor(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN));
-            printf("Object detected within %.2f cm. Stopping car.\n", distance_cm);
-
-            // Rotate 90 degrees to the right
-            rotate_90_degrees_right();
-
-            // Move forward for 90 cm over 5 seconds
-            move_forward_distance(MOVE_DISTANCE_CM, MOVE_TIME_MS);
-        } else {
-            // No object within range; disable override
-            ultrasonic_override = false;
-            rotate_both_motors("forward", duty_cycle_motor1, duty_cycle_motor2);
-            printf("Moving forward. Distance: %.2f cm\n", distance_cm);
+        if (distance_cm > 0) {  // Valid distance reading
+            if (distance_cm <= START_CONTROL_DISTANCE) {  // Within control distance
+                if (distance_cm <= TARGET_DISTANCE + STOP_TOLERANCE && !turning_flag) {
+                    // Stop motors first
+                    stop_motor(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN));
+                    stop_motor(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN));
+                    printf("TARGET REACHED - STOPPING. Distance: %.2f cm\n", distance_cm);
+                    
+                    // Set turning flag and small delay to ensure complete stop
+                    turning_flag = true;
+                    vTaskDelay(pdMS_TO_TICKS(500));
+                    
+                    printf("Starting turn sequence\n");
+                    pid_reset(&distance_pid);
+                    rotate_90_degrees_right();
+                    move_forward_distance(MOVE_DISTANCE_CM, MOVE_TIME_MS);
+                    
+                    // Reset turning flag after movement complete
+                    turning_flag = false;
+                } else if (!turning_flag) {
+                    // Calculate motor speed using PID
+                    double error = distance_cm - TARGET_DISTANCE;
+                    double pid_output = pid_update(&distance_pid, distance_cm);
+                    int new_duty_cycle = (int)pid_output;
+                    
+                    // Ensure duty cycle is within bounds
+                    if (new_duty_cycle < MIN_DUTY_CYCLE) {
+                        new_duty_cycle = MIN_DUTY_CYCLE;
+                    } else if (new_duty_cycle > NORMAL_DUTY_CYCLE) {
+                        new_duty_cycle = NORMAL_DUTY_CYCLE;
+                    }
+                    
+                    duty_cycle_motor1 = new_duty_cycle;
+                    duty_cycle_motor2 = new_duty_cycle;
+                    
+                    rotate_both_motors("forward", duty_cycle_motor1, duty_cycle_motor2);
+                    printf("PID control active. Distance: %.2f cm, Error: %.2f, Duty Cycle: %d\n", 
+                           distance_cm, error, new_duty_cycle);
+                }
+            } else if (!turning_flag) {
+                // When beyond control distance, move at normal speed (35%)
+                rotate_both_motors("forward", NORMAL_DUTY_CYCLE, NORMAL_DUTY_CYCLE);
+                printf("Normal speed (35%%). Distance: %.2f cm, Duty Cycle: %d\n", 
+                       distance_cm, NORMAL_DUTY_CYCLE);
+            }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(10));  // Delay to avoid constant checking (adjust as needed)
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
