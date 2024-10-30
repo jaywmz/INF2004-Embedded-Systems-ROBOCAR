@@ -10,8 +10,7 @@
 
 // Encoder and Motor Configuration
 #define LEFT_ENCODER_PIN 27
-#define RIGHT_ENCODER_PIN 9
-#define MOTOR_PWM_PIN 15
+#define RIGHT_ENCODER_PIN 3
 
 // Wheel and Encoder Measurements
 #define ENCODER_NOTCHES_PER_REV 20
