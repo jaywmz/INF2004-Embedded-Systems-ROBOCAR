@@ -12,7 +12,7 @@
 #define NUM_SAMPLES 20  // Number of samples to average
 
 // Barcode Scanning Parameters
-#define CAR_SPEED_CM_PER_SEC 1              // Constant speed of the car in cm/s
+#define CAR_SPEED_CM_PER_SEC 0.5              // Constant speed of the car in cm/s - testing 0.5cm per second
 #define MAX_BARS 9                           // Number of bars (5 black, 4 white) in Code 39 character
 #define END_BAR_SPACE_THRESHOLD 500000        // Increase threshold for detecting end-of-barcode space
 
@@ -36,7 +36,7 @@ const char* code39_patterns[] = {
     "211111122", "112111122", "212111121", "111121122", "211121121", // K-O
     "112121121", "111111222", "211111221", "112111221", "111121221", // P-T
     "221111112", "122111112", "222111111", "121121112", "221121111", // U-Y
-    "122121111", "121111212", "221111211", "122111211"              // Z-*
+    "122121111", "121111212", "221111211", "122111211"             // Z-*
 };
 const char code39_chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-*";
 
@@ -82,9 +82,11 @@ char decode_character() {
     // Match the pattern against Code 39 patterns in both directions
     for (int i = 0; i < sizeof(code39_patterns) / sizeof(code39_patterns[0]); i++) {
         if (strcmp(pattern, code39_patterns[i]) == 0) {
+            printf("Debug: Matched pattern in left-to-right direction\n");
             return code39_chars[i];  // Return the matching character for left-to-right
         }
         if (strcmp(reversed_pattern, code39_patterns[i]) == 0) {
+            printf("Debug: Matched pattern in right-to-left direction\n");
             return code39_chars[i];  // Return the matching character for right-to-left
         }
     }
@@ -96,12 +98,19 @@ char decode_character() {
 void decode_barcode() {
     printf("Decoding barcode...\n");
     char decoded_char = decode_character();
-    printf("Decoded Character: %c\n", decoded_char);
+
+    // Check if a valid character was returned
+    if (decoded_char != '?') {
+        printf("Decoded Character: %c\n", decoded_char);
+    } else {
+        printf("Debug: Unable to decode the character, returned '?'\n");
+    }
 
     // Clear the buffer and reset decoding state after decoding
     bar_count = 0;
     decoding_active = false;  // Return to idle mode
 }
+
 
 // Function to detect surface contrast using the IR sensor and store pulse widths
 void detect_surface_contrast() {
@@ -134,7 +143,7 @@ void detect_surface_contrast() {
             if (bar_count < MAX_BARS) {
                 bar_widths[bar_count] = pulse_duration_us;
                 bar_colors[bar_count] = current_is_black;
-                printf("Debug: Captured bar #%d: Width = %u us, Color = %s\n", bar_count, pulse_duration_us, current_is_black ? "Black" : "White");
+                printf("Debug: Captured bar #%d: Width = %u us", bar_count, pulse_duration_us);
                 bar_count++;
             }
 
