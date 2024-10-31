@@ -8,8 +8,13 @@ target_link_libraries(ultrasonic_lib
     hardware_gpio        # GPIO control 
     hardware_timer       # Timer control 
     FreeRTOS-Kernel      # FreeRTOS kernel 
-    FreeRTOS-Kernel-Heap4  # FreeRTOS heap 
+    FreeRTOS-Kernel-Heap4  # FreeRTOS heap
+    pid_motor_lib
 ) 
+
+target_include_directories(ultrasonic_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
  
 # # Create map/bin/hex/uf2 files for the program 
 # pico_add_extra_outputs(ultrasonic_lib) 

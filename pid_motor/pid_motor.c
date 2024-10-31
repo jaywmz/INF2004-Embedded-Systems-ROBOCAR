@@ -1,7 +1,6 @@
 #include "pid_motor.h"
-#include <string.h>  // Added for strcmp
 
-// Initialize duty cycle variables
+// Initialize variables
 int duty_cycle_motor1 = 5000;
 int duty_cycle_motor2 = 5000;
 PIDController distance_pid;
@@ -13,6 +12,7 @@ void setup_pwm(uint gpio_pin) {
     pwm_set_wrap(slice_num, 12500);
     pwm_set_chan_level(slice_num, PWM_CHAN_A, 0);
     pwm_set_enabled(slice_num, true);
+    printf("PWM setup on pin %d\n", gpio_pin);
 }
 
 void setup_motor_pins(uint in1_pin, uint in2_pin) {
@@ -20,6 +20,7 @@ void setup_motor_pins(uint in1_pin, uint in2_pin) {
     gpio_set_dir(in1_pin, GPIO_OUT);
     gpio_init(in2_pin);
     gpio_set_dir(in2_pin, GPIO_OUT);
+    printf("Motor pins setup: IN1=%d, IN2=%d\n", in1_pin, in2_pin);
 }
 
 void rotate_motor(const char *direction, uint in1_pin, uint in2_pin) {
@@ -49,6 +50,33 @@ void rotate_both_motors(const char *direction, int duty_cycle_motor1, int duty_c
     rotate_motor(direction, MOTOR2_IN1_PIN, MOTOR2_IN2_PIN);
     start_motor(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), duty_cycle_motor1);
     start_motor(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), duty_cycle_motor2);
+}
+
+void strong_start(const char *direction) {
+    printf("Starting with high power burst\n");
+    
+    // Set direction
+    rotate_motor(direction, MOTOR1_IN1_PIN, MOTOR1_IN2_PIN);
+    rotate_motor(direction, MOTOR2_IN1_PIN, MOTOR2_IN2_PIN);
+    
+    // Initial high power burst
+    printf("Phase 1: High power burst at %d\n", BURST_DUTY_CYCLE);
+    start_motor(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), BURST_DUTY_CYCLE);
+    start_motor(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), BURST_DUTY_CYCLE);
+    
+    sleep_ms(BURST_DURATION_MS);
+    
+    // Second phase - medium power
+    printf("Phase 2: Medium power at %d\n", HIGH_POWER_DUTY);
+    set_motor_speed(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), HIGH_POWER_DUTY);
+    set_motor_speed(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), HIGH_POWER_DUTY);
+    
+    sleep_ms(HIGH_POWER_DURATION_MS);
+    
+    // Final phase - normal operating speed
+    printf("Phase 3: Normal speed at %d\n", NORMAL_DUTY_CYCLE);
+    set_motor_speed(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), NORMAL_DUTY_CYCLE);
+    set_motor_speed(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), NORMAL_DUTY_CYCLE);
 }
 
 void pid_init(PIDController *pid, double kp, double ki, double kd, 
@@ -95,15 +123,4 @@ void pid_reset(PIDController *pid) {
     pid->integral = 0.0;
     pid->prev_error = 0.0;
     pid->last_time = to_ms_since_boot(get_absolute_time());
-}
-
-void adjust_speed_with_pid(double current_distance) {
-    double pid_output = pid_update(&distance_pid, current_distance);
-    
-    int new_duty_cycle = (int)pid_output;
-    duty_cycle_motor1 = new_duty_cycle;
-    duty_cycle_motor2 = new_duty_cycle;
-    
-    set_motor_speed(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), duty_cycle_motor1);
-    set_motor_speed(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), duty_cycle_motor2);
 }
