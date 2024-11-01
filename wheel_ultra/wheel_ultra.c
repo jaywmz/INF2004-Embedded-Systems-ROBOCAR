@@ -12,6 +12,9 @@ MessageBufferHandle_t right_buffer = NULL;
 TaskHandle_t left_encoder_task_handle = NULL;
 TaskHandle_t right_encoder_task_handle = NULL;
 
+// Encoder timeout for detecting stationary state (in microseconds)
+#define ENCODER_TIMEOUT_US 500000  // 500 ms
+
 // Kalman Filter Functions
 // Initialize a Kalman filter state with specified parameters
 kalman_state *kalman_init(double q, double r, double p, double initial_value) {
@@ -150,10 +153,22 @@ void unified_gpio_callback(uint gpio, uint32_t events) {
 // Task to process data received from the left encoder
 void process_left_encoder_task(void *pvParameters) {
     EncoderData data;
+    static bool isStationary = false; // Track stationary state
+
     while (1) {
-        // Receive data from left buffer
-        if (xMessageBufferReceive(left_buffer, &data, sizeof(data), portMAX_DELAY) > 0) {
+        // Check for a pulse from the left buffer
+        if (xMessageBufferReceive(left_buffer, &data, sizeof(data), pdMS_TO_TICKS(ENCODER_TIMEOUT_US / 1000)) > 0) {
             log_encoder_data("Left", &data);  // Log the received data
+            isStationary = false; // Reset stationary flag
+        } else {
+            // Timeout occurred, no pulses detected
+            data.speed_m_per_s = 0; // Set speed to 0
+            data.pulse_width_us = 0; // Optionally, set pulse width to 0 to indicate no movement
+
+            if (!isStationary) { // Log only once when becoming stationary
+                log_encoder_data("Left (Stationary)", &data);
+                isStationary = true; // Set stationary flag
+            }
         }
     }
 }
@@ -161,10 +176,22 @@ void process_left_encoder_task(void *pvParameters) {
 // Task to process data received from the right encoder
 void process_right_encoder_task(void *pvParameters) {
     EncoderData data;
+    static bool isStationary = false; // Track stationary state
+
     while (1) {
-        // Receive data from right buffer
-        if (xMessageBufferReceive(right_buffer, &data, sizeof(data), portMAX_DELAY) > 0) {
+        // Check for a pulse from the right buffer
+        if (xMessageBufferReceive(right_buffer, &data, sizeof(data), pdMS_TO_TICKS(ENCODER_TIMEOUT_US / 1000)) > 0) {
             log_encoder_data("Right", &data);  // Log the received data
+            isStationary = false; // Reset stationary flag
+        } else {
+            // Timeout occurred, no pulses detected
+            data.speed_m_per_s = 0; // Set speed to 0
+            data.pulse_width_us = 0; // Optionally, set pulse width to 0 to indicate no movement
+
+            if (!isStationary) { // Log only once when becoming stationary
+                log_encoder_data("Right (Stationary)", &data);
+                isStationary = true; // Set stationary flag
+            }
         }
     }
 }
@@ -192,7 +219,6 @@ void ultrasonic_task(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(100));  // Delay to allow time for other tasks
     }
 }
-
 
 // Initialization Function for All Sensors and Tasks
 void system_init() {
