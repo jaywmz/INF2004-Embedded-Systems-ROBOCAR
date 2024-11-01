@@ -12,6 +12,10 @@ MessageBufferHandle_t right_buffer = NULL;
 TaskHandle_t left_encoder_task_handle = NULL;
 TaskHandle_t right_encoder_task_handle = NULL;
 
+volatile uint32_t left_pulse_count = 0;
+volatile uint32_t right_pulse_count = 0;
+
+
 // Encoder timeout for detecting stationary state (in microseconds)
 #define ENCODER_TIMEOUT_US 500000  // 500 ms
 
@@ -39,7 +43,11 @@ void kalman_update(kalman_state *state, double measurement) {
 void reset_encoders(void) {
     xMessageBufferReset(left_buffer);
     xMessageBufferReset(right_buffer);
+    left_pulse_count = 0;
+    right_pulse_count = 0;
+    printf("Encoders reset: Left and Right pulse counts reset to zero.\n");
 }
+
 
 
 void setupUltrasonicPins() {
@@ -113,14 +121,13 @@ void unified_gpio_callback(uint gpio, uint32_t events) {
     }
     // Left Wheel Encoder
     else if (gpio == LEFT_ENCODER_PIN && (events & GPIO_IRQ_EDGE_RISE)) {
-        static uint32_t left_pulse_count = 0;
         static float left_total_distance = 0.0;
         static uint64_t last_left_pulse_time = 0;
 
         uint64_t pulse_width_us = current_time - last_left_pulse_time;  // Calculate pulse width
         last_left_pulse_time = current_time;
 
-        left_pulse_count++;
+        left_pulse_count++;  // Increment global pulse count
         float left_speed = (pulse_width_us > 0 && pulse_width_us < MICROSECONDS_IN_A_SECOND)
                            ? DISTANCE_PER_NOTCH / (pulse_width_us / MICROSECONDS_IN_A_SECOND) : 0;
 
@@ -134,14 +141,13 @@ void unified_gpio_callback(uint gpio, uint32_t events) {
     }
     // Right Wheel Encoder
     else if (gpio == RIGHT_ENCODER_PIN && (events & GPIO_IRQ_EDGE_RISE)) {
-        static uint32_t right_pulse_count = 0;
         static float right_total_distance = 0.0;
         static uint64_t last_right_pulse_time = 0;
 
         uint64_t pulse_width_us = current_time - last_right_pulse_time;  // Calculate pulse width
         last_right_pulse_time = current_time;
 
-        right_pulse_count++;
+        right_pulse_count++;  // Increment global pulse count
         float right_speed = (pulse_width_us > 0 && pulse_width_us < MICROSECONDS_IN_A_SECOND)
                             ? DISTANCE_PER_NOTCH / (pulse_width_us / MICROSECONDS_IN_A_SECOND) : 0;
 
@@ -154,6 +160,7 @@ void unified_gpio_callback(uint gpio, uint32_t events) {
         }
     }
 }
+
 
 // Tasks for Processing Encoder Data
 // Task to process data received from the left encoder

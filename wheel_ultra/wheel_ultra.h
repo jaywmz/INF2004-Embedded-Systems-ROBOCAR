@@ -35,6 +35,10 @@ extern MessageBufferHandle_t right_buffer;
 extern TaskHandle_t left_encoder_task_handle;
 extern TaskHandle_t right_encoder_task_handle;
 
+extern volatile uint32_t left_pulse_count;
+extern volatile uint32_t right_pulse_count;
+
+
 typedef struct {
     double q;
     double r;

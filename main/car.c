@@ -42,18 +42,15 @@ void rotate_90_degrees_right() {
             total_left_pulses = left_data.pulse_count;
             printf("Left pulses: %d\n", total_left_pulses);
         }
-
         // Check for new data from the right encoder
         if (xMessageBufferReceive(right_buffer, &right_data, sizeof(right_data), pdMS_TO_TICKS(10)) > 0) {
             total_right_pulses = right_data.pulse_count;
             printf("Right pulses: %d\n", total_right_pulses);
         }
-
         // Check if we have reached the target on both encoders
         if (total_left_pulses >= TARGET_PULSES && total_right_pulses >= TARGET_PULSES) {
             break;
         }
-
         // Brief delay to allow encoder readings to update
         vTaskDelay(pdMS_TO_TICKS(10));
     }
