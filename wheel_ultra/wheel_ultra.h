@@ -11,10 +11,10 @@
 #include <stdlib.h>
 
 // Pin Definitions
-#define TRIGPIN 1
-#define ECHOPIN 0
-#define LEFT_ENCODER_PIN 8
-#define RIGHT_ENCODER_PIN 26
+#define TRIGPIN 9
+#define ECHOPIN 8
+#define LEFT_ENCODER_PIN 27
+#define RIGHT_ENCODER_PIN 3
 
 // Ultrasonic and Encoder Configuration
 #define ULTRASONIC_TIMEOUT 26000  // Timeout for ultrasonic sensor
