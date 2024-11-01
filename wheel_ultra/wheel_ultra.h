@@ -17,35 +17,32 @@
 #define RIGHT_ENCODER_PIN 3
 
 // Ultrasonic and Encoder Configuration
-#define ULTRASONIC_TIMEOUT 26000  // Timeout for ultrasonic sensor
+#define ULTRASONIC_TIMEOUT 26000
 #define ENCODER_NOTCHES_PER_REV 20
-#define WHEEL_DIAMETER 0.065  // in meters
+#define WHEEL_DIAMETER 0.065
 #define WHEEL_CIRCUMFERENCE (WHEEL_DIAMETER * 3.14159265358979323846)
 #define DISTANCE_PER_NOTCH (WHEEL_CIRCUMFERENCE / ENCODER_NOTCHES_PER_REV)
 #define MICROSECONDS_IN_A_SECOND 1000000.0f
-#define ENCODER_TIMEOUT_INTERVAL 1000000  // Timeout in microseconds (1 second)
+#define ENCODER_TIMEOUT_INTERVAL 1000000
 
 // Global Variables (extern)
 extern volatile absolute_time_t start_time;
 extern volatile uint64_t latest_pulse_width;
 extern volatile bool obstacleDetected;
 
-// Message Buffers and Task Handles (extern)
 extern MessageBufferHandle_t left_buffer;
 extern MessageBufferHandle_t right_buffer;
 extern TaskHandle_t left_encoder_task_handle;
 extern TaskHandle_t right_encoder_task_handle;
 
-// Kalman Filter Structure
 typedef struct {
-    double q;  // Process noise covariance
-    double r;  // Measurement noise covariance
-    double x;  // Estimated value
-    double p;  // Estimation error covariance
-    double k;  // Kalman gain
+    double q;
+    double r;
+    double x;
+    double p;
+    double k;
 } kalman_state;
 
-// Encoder Data Structure
 typedef struct {
     uint32_t pulse_count;
     float speed_m_per_s;
@@ -75,5 +72,6 @@ void ultrasonic_task(void *pvParameters);
 
 // System Initialization Function
 void system_init();
+void reset_encoders();
 
 #endif

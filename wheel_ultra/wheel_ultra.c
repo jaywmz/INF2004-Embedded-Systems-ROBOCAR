@@ -36,6 +36,12 @@ void kalman_update(kalman_state *state, double measurement) {
 
 // Ultrasonic Sensor Functions
 // Configure ultrasonic sensor pins for trigger and echo functionality
+void reset_encoders(void) {
+    xMessageBufferReset(left_buffer);
+    xMessageBufferReset(right_buffer);
+}
+
+
 void setupUltrasonicPins() {
     gpio_init(TRIGPIN);            // Initialize trigger pin
     gpio_set_dir(TRIGPIN, GPIO_OUT);
@@ -222,15 +228,9 @@ void ultrasonic_task(void *pvParameters) {
 
 // Initialization Function for All Sensors and Tasks
 void system_init() {
-    // Allocate message buffers for inter-task communication
     left_buffer = xMessageBufferCreate(256);
     right_buffer = xMessageBufferCreate(256);
-    if (left_buffer == NULL || right_buffer == NULL) {
-        printf("Error: Message buffer allocation failed\n");
-        return;
-    }
 
-    // Initialize GPIO pins for ultrasonic and encoder sensors
     gpio_init(TRIGPIN);
     gpio_set_dir(TRIGPIN, GPIO_OUT);
     gpio_put(TRIGPIN, 0);
@@ -246,12 +246,10 @@ void system_init() {
     gpio_set_dir(RIGHT_ENCODER_PIN, GPIO_IN);
     gpio_pull_up(RIGHT_ENCODER_PIN);
 
-    // Attach ISR for ultrasonic and encoder pins
     gpio_set_irq_enabled_with_callback(ECHOPIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &unified_gpio_callback);
     gpio_set_irq_enabled_with_callback(LEFT_ENCODER_PIN, GPIO_IRQ_EDGE_RISE, true, &unified_gpio_callback);
     gpio_set_irq_enabled_with_callback(RIGHT_ENCODER_PIN, GPIO_IRQ_EDGE_RISE, true, &unified_gpio_callback);
 
-    // Create tasks for processing encoder and ultrasonic data
     xTaskCreate(process_left_encoder_task, "Process Left Encoder Task", 1024, NULL, 1, &left_encoder_task_handle);
     xTaskCreate(process_right_encoder_task, "Process Right Encoder Task", 1024, NULL, 1, &right_encoder_task_handle);
     xTaskCreate(ultrasonic_task, "Ultrasonic Task", 1024, NULL, 1, NULL);
