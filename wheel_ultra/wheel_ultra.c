@@ -1,146 +1,251 @@
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "hardware/timer.h"
-#include "hardware/pwm.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "message_buffer.h"
 #include <stdio.h>
+#include <stdlib.h>
 
-// -------------------- Encoder and Motor Configuration --------------------
-#define ENCODER_PIN 2       // Encoder signal input
-#define MOTOR_PWM_PIN 15    // Motor PWM output pin
-#define WHEEL_DIAMETER_MM 65  // Diameter of the wheel in mm
-#define ENCODER_SLOTS 20    // Number of slots in the encoder
+// Pin Definitions
+#define TRIGPIN 1
+#define ECHOPIN 0
+#define LEFT_ENCODER_PIN 8
+#define RIGHT_ENCODER_PIN 26
 
-// Variables to track pulse count and speed
-volatile uint32_t pulse_count = 0;
-volatile uint64_t last_pulse_time = 0;
-volatile float speed_mm_per_s = 0.0;
-volatile float total_distance_m = 0.0;
+// Ultrasonic and Encoder Configuration
+#define ULTRASONIC_TIMEOUT 26000  // Timeout for ultrasonic sensor
+#define ENCODER_NOTCHES_PER_REV 20
+#define WHEEL_DIAMETER 0.065  // in meters
+#define WHEEL_CIRCUMFERENCE (WHEEL_DIAMETER * 3.14159265358979323846)
+#define DISTANCE_PER_NOTCH (WHEEL_CIRCUMFERENCE / ENCODER_NOTCHES_PER_REV)
+#define MICROSECONDS_IN_A_SECOND 1000000.0f
+#define ENCODER_TIMEOUT_INTERVAL 1000000  // Timeout in microseconds (1 second)
 
-// Constants for encoder
-const float distance_per_pulse_mm = (WHEEL_DIAMETER_MM * 3.1416) / ENCODER_SLOTS;  // Distance per pulse in mm
+// Global Variables
+volatile absolute_time_t start_time;  // Start time for ultrasonic echo pulse
+volatile uint64_t latest_pulse_width = 0;  // Pulse width for ultrasonic sensor
+volatile bool obstacleDetected = false;  // Flag for obstacle detection
 
-// Timer for speed calculation
-struct repeating_timer speed_timer;
+// Message Buffers and Task Handles
+MessageBufferHandle_t left_buffer = NULL;
+MessageBufferHandle_t right_buffer = NULL;
+TaskHandle_t left_encoder_task_handle = NULL;
+TaskHandle_t right_encoder_task_handle = NULL;
 
-// -------------------- Ultrasonic Sensor Configuration --------------------
-const int timeout = 26100;  // Timeout for ultrasonic sensor (~4.5 meters)
-const uint trigPin = 1;  // GP1 for Trigger pin
-const uint echoPin = 0;  // GP0 for Echo pin
+// Kalman Filter Structure
+typedef struct {
+    double q;  // Process noise covariance
+    double r;  // Measurement noise covariance
+    double x;  // Estimated value
+    double p;  // Estimation error covariance
+    double k;  // Kalman gain
+} kalman_state;
 
-// -------------------- Encoder Callback Function --------------------
-void encoder_callback(uint gpio, uint32_t events) {
-    if (gpio == ENCODER_PIN && (events & GPIO_IRQ_EDGE_RISE)) {
-        uint64_t current_time = time_us_64();
-        uint64_t pulse_duration_us = current_time - last_pulse_time;
-        last_pulse_time = current_time;
+// Encoder Data Structure
+typedef struct {
+    uint32_t pulse_count;
+    float speed_m_per_s;
+    float distance_m;
+    uint64_t pulse_width_us;
+} EncoderData;
 
-        // Increment pulse count
-        pulse_count++;
-
-        // Calculate speed in mm/s
-        if (pulse_duration_us > 0) {
-            float pulse_duration_s = pulse_duration_us / 1000000.0f;
-            speed_mm_per_s = distance_per_pulse_mm / pulse_duration_s;  // Speed in mm/s
-        }
-
-        // Update total distance traveled in meters
-        total_distance_m += distance_per_pulse_mm / 1000.0f;  // Convert mm to meters
-
-        printf("Pulse Duration: %.2f ms, Pulses: %d, Speed: %.2f mm/s, Total Distance: %.2f meters\n", 
-                pulse_duration_us / 1000.0f, pulse_count, speed_mm_per_s, total_distance_m);
-    }
+// Kalman Filter Functions
+kalman_state *kalman_init(double q, double r, double p, double initial_value) {
+    kalman_state *state = (kalman_state *)calloc(1, sizeof(kalman_state));
+    state->q = q;
+    state->r = r;
+    state->p = p;
+    state->x = initial_value;
+    return state;
 }
 
-// -------------------- Timer Callback for Speed Updates --------------------
-bool speed_timer_callback(struct repeating_timer *t) {
-    printf("Speed Update -> Speed: %.2f mm/s, Total Distance: %.2f meters\n", speed_mm_per_s, total_distance_m);
-    return true;
+void kalman_update(kalman_state *state, double measurement) {
+    state->p += state->q;
+    state->k = state->p / (state->p + state->r);
+    state->x += state->k * (measurement - state->x);
+    state->p *= (1 - state->k);
 }
 
-// -------------------- PWM Setup for Motor Control --------------------
-void setup_pwm() {
-    gpio_set_function(MOTOR_PWM_PIN, GPIO_FUNC_PWM);
-    uint slice_num = pwm_gpio_to_slice_num(MOTOR_PWM_PIN);
-    pwm_set_wrap(slice_num, 12500);  // 10ms period (100Hz PWM frequency)
-    pwm_set_chan_level(slice_num, PWM_CHAN_A, 6250);  // 50% duty cycle
-    pwm_set_enabled(slice_num, true);
-}
-
-// -------------------- Ultrasonic Sensor Functions --------------------
+// Ultrasonic Sensor Functions
 void setupUltrasonicPins() {
-    gpio_init(trigPin);
-    gpio_init(echoPin);
-    gpio_set_dir(trigPin, GPIO_OUT);  // Trigger pin as output
-    gpio_set_dir(echoPin, GPIO_IN);   // Echo pin as input
-    gpio_put(trigPin, 0);  // Ensure trigger starts low
-}
-
-void sendTriggerPulse() {
-    gpio_put(trigPin, 1);
-    sleep_us(10);  // 10 microsecond pulse
-    gpio_put(trigPin, 0);
-    sleep_us(200);  // Small delay between pulses
+    gpio_init(TRIGPIN);
+    gpio_set_dir(TRIGPIN, GPIO_OUT);
+    gpio_put(TRIGPIN, 0);
+    
+    gpio_init(ECHOPIN);
+    gpio_set_dir(ECHOPIN, GPIO_IN);
+    gpio_pull_down(ECHOPIN);
+    
+    printf("Ultrasonic pins configured - TRIG: %d, ECHO: %d\n", TRIGPIN, ECHOPIN);
 }
 
 uint64_t getPulse() {
-    sendTriggerPulse();
-    absolute_time_t startWaitTime = get_absolute_time();
-    while (gpio_get(echoPin) == 0) {
-        if (absolute_time_diff_us(startWaitTime, get_absolute_time()) > timeout) {
-            return 0;  // Timeout
-        }
+    latest_pulse_width = 0;
+    
+    gpio_put(TRIGPIN, 1);
+    sleep_us(10);
+    gpio_put(TRIGPIN, 0);
+
+    absolute_time_t timeout_time = make_timeout_time_ms(30);
+    while (latest_pulse_width == 0 && !time_reached(timeout_time)) {
+        tight_loop_contents();
     }
-    absolute_time_t pulseStart = get_absolute_time();
-    while (gpio_get(echoPin) == 1) {
-        if (absolute_time_diff_us(pulseStart, get_absolute_time()) > timeout) {
-            return 0;  // Timeout
-        }
-    }
-    absolute_time_t pulseEnd = get_absolute_time();
-    return absolute_time_diff_us(pulseStart, pulseEnd);
+
+    printf("Pulse width: %llu µs\n", latest_pulse_width);
+    return latest_pulse_width;
 }
 
-uint64_t getCm() {
+double getCm(kalman_state *state) {
     uint64_t pulseLength = getPulse();
-    if (pulseLength == 0) {
+    if (pulseLength == 0 || pulseLength > ULTRASONIC_TIMEOUT) {
+        printf("Error: Pulse timeout or out of range.\n");
         return 0;
     }
-    double distance_cm = (pulseLength * 0.0343) / 2;
-    if (distance_cm > 450 || distance_cm < 2) {
-        return 0;  // Out of range
+
+    double measured = (double)pulseLength / 58.0;
+    if (measured < 2 || measured > 400) {
+        printf("Measured distance out of range: %.2f cm\n", measured);
+        return 0;
     }
-    return (uint64_t)distance_cm;
+
+    kalman_update(state, measured);
+    return state->x;
 }
 
-// -------------------- Main Function --------------------
-int main() {
-    stdio_init_all();
+// Encoder Data Logging Function
+void log_encoder_data(const char *wheel, EncoderData *data) {
+    printf("%s Wheel -> Pulses: %d, Speed: %.2f m/s, Total Distance: %.2f meters, Pulse Width: %llu us\n",
+           wheel, data->pulse_count, data->speed_m_per_s, data->distance_m, data->pulse_width_us);
+}
 
-    // Initialize encoder
-    gpio_init(ENCODER_PIN);
-    gpio_set_dir(ENCODER_PIN, GPIO_IN);
-    gpio_pull_down(ENCODER_PIN);
-    gpio_set_irq_enabled_with_callback(ENCODER_PIN, GPIO_IRQ_EDGE_RISE, true, &encoder_callback);
+// Unified ISR for Ultrasonic and Encoder Sensors
+void unified_gpio_callback(uint gpio, uint32_t events) {
+    uint64_t current_time = time_us_64();
 
-    // Initialize ultrasonic sensor
+    // Ultrasonic Echo Pulse
+    if (gpio == ECHOPIN) {
+        if (events & GPIO_IRQ_EDGE_RISE) {
+            start_time = get_absolute_time();
+        } else if (events & GPIO_IRQ_EDGE_FALL) {
+            latest_pulse_width = absolute_time_diff_us(start_time, get_absolute_time());
+        }
+    }
+    // Left Wheel Encoder
+    else if (gpio == LEFT_ENCODER_PIN && (events & GPIO_IRQ_EDGE_RISE)) {
+        static uint32_t left_pulse_count = 0;
+        static float left_total_distance = 0.0;
+        static uint64_t last_left_pulse_time = 0;
+
+        uint64_t pulse_width_us = current_time - last_left_pulse_time;
+        last_left_pulse_time = current_time;
+
+        left_pulse_count++;
+        float left_speed = (pulse_width_us > 0 && pulse_width_us < MICROSECONDS_IN_A_SECOND)
+                           ? DISTANCE_PER_NOTCH / (pulse_width_us / MICROSECONDS_IN_A_SECOND) : 0;
+
+        left_total_distance += DISTANCE_PER_NOTCH;
+        EncoderData data = {left_pulse_count, left_speed, left_total_distance, pulse_width_us};
+
+        if (xMessageBufferSendFromISR(left_buffer, &data, sizeof(data), NULL) == pdFALSE) {
+            printf("Error: Left buffer is full\n");
+        }
+    }
+    // Right Wheel Encoder
+    else if (gpio == RIGHT_ENCODER_PIN && (events & GPIO_IRQ_EDGE_RISE)) {
+        static uint32_t right_pulse_count = 0;
+        static float right_total_distance = 0.0;
+        static uint64_t last_right_pulse_time = 0;
+
+        uint64_t pulse_width_us = current_time - last_right_pulse_time;
+        last_right_pulse_time = current_time;
+
+        right_pulse_count++;
+        float right_speed = (pulse_width_us > 0 && pulse_width_us < MICROSECONDS_IN_A_SECOND)
+                            ? DISTANCE_PER_NOTCH / (pulse_width_us / MICROSECONDS_IN_A_SECOND) : 0;
+
+        right_total_distance += DISTANCE_PER_NOTCH;
+        EncoderData data = {right_pulse_count, right_speed, right_total_distance, pulse_width_us};
+
+        if (xMessageBufferSendFromISR(right_buffer, &data, sizeof(data), NULL) == pdFALSE) {
+            printf("Error: Right buffer is full\n");
+        }
+    }
+}
+
+// Tasks for Processing Encoder Data
+void process_left_encoder_task(void *pvParameters) {
+    EncoderData data;
+    while (1) {
+        if (xMessageBufferReceive(left_buffer, &data, sizeof(data), portMAX_DELAY) > 0) {
+            log_encoder_data("Left", &data);
+        }
+    }
+}
+
+void process_right_encoder_task(void *pvParameters) {
+    EncoderData data;
+    while (1) {
+        if (xMessageBufferReceive(right_buffer, &data, sizeof(data), portMAX_DELAY) > 0) {
+            log_encoder_data("Right", &data);
+        }
+    }
+}
+
+void ultrasonic_task(void *pvParameters) {
+    kalman_state *ultrasonic_kalman = kalman_init(0.1, 0.1, 1, 0);
     setupUltrasonicPins();
 
-    // Set up PWM for motor control
-    setup_pwm();
-
-    // Start a repeating timer to print speed and distance every second
-    add_repeating_timer_ms(1000, speed_timer_callback, NULL, &speed_timer);
-
-    // Main loop to measure ultrasonic distance and display it
-    while (true) {
-        uint64_t distance_cm = getCm();
-        if (distance_cm > 0) {
-            printf("Ultrasonic Distance: %llu cm\n", distance_cm);
-        } else {
-            printf("Ultrasonic: Out of range or timeout\n");
+    while (1) {
+        double distance = getCm(ultrasonic_kalman);
+        if (distance > 0) {
+            printf("Ultrasonic Distance: %.2f cm\n", distance);
         }
-        sleep_ms(1000);  // Wait before the next ultrasonic measurement
+        vTaskDelay(pdMS_TO_TICKS(100));  // Delay to allow time for other tasks
+    }
+}
+
+// Initialization Function for All Sensors and Tasks
+void system_init() {
+    // Message buffers
+    left_buffer = xMessageBufferCreate(256);
+    right_buffer = xMessageBufferCreate(256);
+    if (left_buffer == NULL || right_buffer == NULL) {
+        printf("Error: Message buffer allocation failed\n");
+        return;
     }
 
+    // Initialize GPIOs
+    gpio_init(TRIGPIN);
+    gpio_set_dir(TRIGPIN, GPIO_OUT);
+    gpio_put(TRIGPIN, 0);
+    gpio_init(ECHOPIN);
+    gpio_set_dir(ECHOPIN, GPIO_IN);
+    gpio_pull_down(ECHOPIN);
+
+    gpio_init(LEFT_ENCODER_PIN);
+    gpio_set_dir(LEFT_ENCODER_PIN, GPIO_IN);
+    gpio_pull_up(LEFT_ENCODER_PIN);
+
+    gpio_init(RIGHT_ENCODER_PIN);
+    gpio_set_dir(RIGHT_ENCODER_PIN, GPIO_IN);
+    gpio_pull_up(RIGHT_ENCODER_PIN);
+
+    // Attach unified ISR to both encoder and ultrasonic pins
+    gpio_set_irq_enabled_with_callback(ECHOPIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &unified_gpio_callback);
+    gpio_set_irq_enabled_with_callback(LEFT_ENCODER_PIN, GPIO_IRQ_EDGE_RISE, true, &unified_gpio_callback);
+    gpio_set_irq_enabled_with_callback(RIGHT_ENCODER_PIN, GPIO_IRQ_EDGE_RISE, true, &unified_gpio_callback);
+
+    // Create tasks
+    xTaskCreate(process_left_encoder_task, "Process Left Encoder Task", 1024, NULL, 1, &left_encoder_task_handle);
+    xTaskCreate(process_right_encoder_task, "Process Right Encoder Task", 1024, NULL, 1, &right_encoder_task_handle);
+    xTaskCreate(ultrasonic_task, "Ultrasonic Task", 1024, NULL, 1, NULL);
+}
+
+int main() {
+    stdio_init_all();
+    system_init();
+    vTaskStartScheduler();
+    while (1) {}  // Loop in case of scheduler failure
     return 0;
 }
