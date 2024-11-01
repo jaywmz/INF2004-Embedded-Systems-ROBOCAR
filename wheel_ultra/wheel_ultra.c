@@ -1,54 +1,14 @@
-#include "pico/stdlib.h"
-#include "hardware/gpio.h"
-#include "hardware/timer.h"
-#include "FreeRTOS.h"
-#include "task.h"
-#include "message_buffer.h"
-#include <stdio.h>
-#include <stdlib.h>
+#include "wheel_ultra.h"
 
-// Pin Definitions
-#define TRIGPIN 1
-#define ECHOPIN 0
-#define LEFT_ENCODER_PIN 8
-#define RIGHT_ENCODER_PIN 26
+// Define global variables here
+volatile absolute_time_t start_time;
+volatile uint64_t latest_pulse_width = 0;
+volatile bool obstacleDetected = false;
 
-// Ultrasonic and Encoder Configuration
-#define ULTRASONIC_TIMEOUT 26000  // Timeout for ultrasonic sensor
-#define ENCODER_NOTCHES_PER_REV 20
-#define WHEEL_DIAMETER 0.065  // in meters
-#define WHEEL_CIRCUMFERENCE (WHEEL_DIAMETER * 3.14159265358979323846)
-#define DISTANCE_PER_NOTCH (WHEEL_CIRCUMFERENCE / ENCODER_NOTCHES_PER_REV)
-#define MICROSECONDS_IN_A_SECOND 1000000.0f
-#define ENCODER_TIMEOUT_INTERVAL 1000000  // Timeout in microseconds (1 second)
-
-// Global Variables
-volatile absolute_time_t start_time;  // Start time for ultrasonic echo pulse
-volatile uint64_t latest_pulse_width = 0;  // Pulse width for ultrasonic sensor
-volatile bool obstacleDetected = false;  // Flag for obstacle detection
-
-// Message Buffers and Task Handles
 MessageBufferHandle_t left_buffer = NULL;
 MessageBufferHandle_t right_buffer = NULL;
 TaskHandle_t left_encoder_task_handle = NULL;
 TaskHandle_t right_encoder_task_handle = NULL;
-
-// Kalman Filter Structure
-typedef struct {
-    double q;  // Process noise covariance
-    double r;  // Measurement noise covariance
-    double x;  // Estimated value
-    double p;  // Estimation error covariance
-    double k;  // Kalman gain
-} kalman_state;
-
-// Encoder Data Structure
-typedef struct {
-    uint32_t pulse_count;
-    float speed_m_per_s;
-    float distance_m;
-    uint64_t pulse_width_us;
-} EncoderData;
 
 // Kalman Filter Functions
 kalman_state *kalman_init(double q, double r, double p, double initial_value) {
@@ -242,10 +202,3 @@ void system_init() {
     xTaskCreate(ultrasonic_task, "Ultrasonic Task", 1024, NULL, 1, NULL);
 }
 
-int main() {
-    stdio_init_all();
-    system_init();
-    vTaskStartScheduler();
-    while (1) {}  // Loop in case of scheduler failure
-    return 0;
-}

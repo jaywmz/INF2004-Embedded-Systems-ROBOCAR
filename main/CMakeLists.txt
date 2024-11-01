@@ -7,6 +7,7 @@ target_include_directories(car PRIVATE
     ${CMAKE_SOURCE_DIR}/ultrasonic       # Include ultrasonic directory for headers
     ${CMAKE_SOURCE_DIR}/wheel_encoder    # Include wheel_encoder directory for headers
     ${CMAKE_SOURCE_DIR}/pid_motor        # Include pid_motor directory for headers
+    ${CMAKE_SOURCE_DIR}/wheel_ultra      # Include wheel_ultra directory for headers
 )
 
 # Link libraries for car executable
@@ -15,6 +16,7 @@ target_link_libraries(car
     ultrasonic_lib                       # Link the ultrasonic library
     wheel_encoder_lib                    # Link the wheel_encoder library
     pid_motor_lib                        # Link the pid_motor library
+    wheel_ultra_lib
     FreeRTOS-Kernel                      # Link FreeRTOS kernel
 )
 
