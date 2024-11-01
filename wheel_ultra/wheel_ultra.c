@@ -171,17 +171,28 @@ void process_right_encoder_task(void *pvParameters) {
 
 // Task for reading and processing ultrasonic sensor data
 void ultrasonic_task(void *pvParameters) {
-    kalman_state *ultrasonic_kalman = kalman_init(0.1, 0.1, 1, 0);  // Initialize Kalman filter for noise reduction
+    kalman_state *ultrasonic_kalman = kalman_init(0.1, 0.1, 1, 0);  // Initialize Kalman filter
     setupUltrasonicPins();
 
     while (1) {
         double distance = getCm(ultrasonic_kalman);  // Get filtered distance reading
-        if (distance > 0) {
-            printf("Ultrasonic Distance: %.2f cm\n", distance);  // Log distance
+
+        if (distance > 0) {  // Ensure a valid reading
+            printf("Ultrasonic Distance: %.2f cm\n", distance);
+
+            // Check if distance is 10 cm or less to trigger detection
+            if (distance <= 10.0) {
+                printf("Obstacle detected within 10 cm\n");
+                obstacleDetected = true;  // Set detection flag or handle as needed
+            } else {
+                obstacleDetected = false;  // Clear detection flag if out of range
+            }
         }
-        vTaskDelay(pdMS_TO_TICKS(100));  // Delay for task scheduling
+
+        vTaskDelay(pdMS_TO_TICKS(100));  // Delay to allow time for other tasks
     }
 }
+
 
 // Initialization Function for All Sensors and Tasks
 void system_init() {
