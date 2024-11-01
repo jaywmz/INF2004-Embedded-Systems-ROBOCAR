@@ -69,13 +69,13 @@ void move_backward() {
 }
 
 void turn_left() {
-    motor1_forward(9000);
-    motor2_backward(9000);
+    motor1_forward(12000);
+    motor2_backward(12000);
 }
 
 void turn_right() {
-    motor1_backward(9000);
-    motor2_forward(9000);
+    motor1_backward(12000);
+    motor2_forward(12000);
 }
 
 // Function to stop a motor

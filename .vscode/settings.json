@@ -47,6 +47,8 @@
         "mdns.h": "c",
         "mqtt.h": "c",
         "motor.h": "c",
-        "freertosconfig.h": "c"
+        "freertosconfig.h": "c",
+        "encoder.h": "c",
+        "stdio.h": "c"
     }
 }

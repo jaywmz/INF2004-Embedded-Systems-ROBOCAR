@@ -163,15 +163,15 @@ void get_compass_data(Compass *compass) {
            &(compass->y));
 
     if (mqtt_client_is_connected(g_state->mqtt_client)) {
-        cyw43_arch_lwip_begin();
-
+        // If something doesn't work, move begin and end back.
         if (!subscribed) {
+            cyw43_arch_lwip_begin();
             printf("Subscribing to topic pico_w/car\n");
             mqtt_sub_unsub(g_state->mqtt_client, "pico_w/car", 0,
                            mqtt_sub_request_cb, 0, 1);
             subscribed = true;
+            cyw43_arch_lwip_end();
         }
-        cyw43_arch_lwip_end();
     }
 }
 // }
