@@ -13,6 +13,7 @@ typedef struct
 {
     float speed_m_per_s;
     uint64_t pulse_width;
+    int pulse_count;
     uint64_t _last_pulse_time; // Internal variable to keep track of the last pulse time
     int _last_pin_state;       // Internal variable to keep track of the last pin state
 } EncoderData;

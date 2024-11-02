@@ -47,8 +47,17 @@ void read_encoder_data(uint encoder_pin, EncoderData *encoder_data)
             encoder_data->pulse_width = pulse_width;
             float speed = calculate_speed(pulse_width);
             encoder_data->speed_m_per_s = speed;
-            printf("Speed: %.2f m/s, Pulse Width: %lluus\n ", speed,
-                   pulse_width);
+            encoder_data->pulse_count++;
+            // if (encoder_pin == LEFT_ENCODER_PIN)
+            // {
+            //     printf("Left ");
+            // }
+            // else
+            // {
+            //     printf("Right ");
+            // }
+            // printf("Speed: %.2f m/s, Pulse Width: %lluus\n ", speed,
+            //        pulse_width);
         }
 
         encoder_data->_last_pulse_time = current_time;
