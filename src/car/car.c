@@ -17,6 +17,8 @@ Compass compass;
 EncoderData left_encoder_data, right_encoder_data;
 KalmanState kalman_state;
 
+PIDController pid_motor_1, pid_motor_2;
+
 int PLS_STOP = 0;
 
 #define STOPPING_DISTANCE 10.0 // Distance in cm to stop when obstacle detected
@@ -78,6 +80,9 @@ void rotate_90_degrees_left()
 
 void vTaskEncoder(__unused void *pvParameters)
 {
+
+    encoder_kalman_init(&left_encoder_data.kalman_state, 0.1, 0.1, 1.0, 0.0);
+    encoder_kalman_init(&right_encoder_data.kalman_state, 0.1, 0.1, 1.0, 0.0);
     while (1)
     {
         read_encoder_data(LEFT_ENCODER_PIN, &left_encoder_data);
@@ -87,27 +92,48 @@ void vTaskEncoder(__unused void *pvParameters)
 
 void vTaskMotor(__unused void *pvParameters)
 {
+    pid_init(&pid_motor_1, 1.0, 0.1, 0.05, 0.7, 0, 12500);
+    pid_init(&pid_motor_2, 1.0, 0.1, 0.05, 0.7, 0, 12500);
+
     int state = 0;
     while (1)
     {
+        //     float left_control = pid_compute(&pid_motor_1, left_encoder_data.speed_m_per_s);
+        //     float right_control = pid_compute(&pid_motor_2, right_encoder_data.speed_m_per_s);
+
+        //     set_motor_speed(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), left_control);
+        //     set_motor_speed(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), right_control);
+
+        //     motor1_forward(left_control);
+        //     motor2_forward(right_control);
         // printf("P: %d, R: %d\n", compass.p, compass.r);
         if (compass.p > 20)
         {
-            if (PLS_STOP == 1)
-            {
-                stop_motors();
-            }
-            else
-            {
-                // printf("Moving forward\n");
-                move_forward();
-            }
+            move_forward();
+            // if (PLS_STOP == 1)
+            // {
+            //     stop_motors();
+            // }
+            // else
+            // {
+            //     // printf("Moving forward\n");
+            //     // move_forward();
+            //     float left_control = pid_compute(&pid_motor_1, left_encoder_data.speed_m_per_s);
+            //     float right_control = pid_compute(&pid_motor_2, right_encoder_data.speed_m_per_s);
+
+            //     set_motor_speed(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), left_control);
+            //     set_motor_speed(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), right_control);
+
+            //     motor1_forward(left_control);
+            //     motor2_forward(right_control);
+            // }
             // strong_start(GO_FORWARD);
         }
         else if (compass.p < -20)
         {
             // printf("Moving backward\n");
-            move_backward();
+            motor1_forward(11000);
+            motor2_forward(11000);
         }
         else if (compass.r > 20)
         {
@@ -189,7 +215,7 @@ void vLaunch()
     xTaskCreate(vTaskEncoder, "EncoderTask", 2048, NULL, tskIDLE_PRIORITY + 1UL,
                 &encoderTask);
     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
-    xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
+    // xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
     vTaskStartScheduler();
 }
 

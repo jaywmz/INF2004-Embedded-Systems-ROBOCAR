@@ -15,6 +15,35 @@
 // Debounce time in microseconds
 // #define DEBOUNCE_TIME_US 1000 // Adjust this value as needed
 
+typedef struct
+{
+    float q; // Process noise covariance
+    float r; // Measurement noise covariance
+    float p; // Estimation error covariance
+    float k; // Kalman gain
+    float x; // Estimated value
+} KalmanState;
+
+void encoder_kalman_init(EncoderKalmanState *state, float q, float r, float p, float initial_value)
+{
+    state->q = q;
+    state->r = r;
+    state->p = p;
+    state->x = initial_value;
+    state->k = 0.0;
+}
+
+void encoder_kalman_update(EncoderKalmanState *state, float measurement)
+{
+    // Prediction update
+    state->p += state->q;
+
+    // Measurement update
+    state->k = state->p / (state->p + state->r);
+    state->x += state->k * (measurement - state->x);
+    state->p *= (1 - state->k);
+}
+
 // Function to calculate speed based on pulse width
 static float calculate_speed(uint64_t pulse_width)
 {
@@ -46,18 +75,20 @@ void read_encoder_data(uint encoder_pin, EncoderData *encoder_data)
         {
             encoder_data->pulse_width = pulse_width;
             float speed = calculate_speed(pulse_width);
-            encoder_data->speed_m_per_s = speed;
+            encoder_kalman_update(&encoder_data->kalman_state, speed);
+            encoder_data->speed_m_per_s = encoder_data->kalman_state.x;
             encoder_data->pulse_count++;
-            // if (encoder_pin == LEFT_ENCODER_PIN)
-            // {
-            //     printf("Left ");
-            // }
-            // else
-            // {
-            //     printf("Right ");
-            // }
-            // printf("Speed: %.2f m/s, Pulse Width: %lluus\n ", speed,
-            //        pulse_width);
+            if (encoder_pin == LEFT_ENCODER_PIN)
+            {
+                printf("Left Speed: %.2f m/s, Pulse Width: %lluus, Filtered Speed: %.2f m/s\n", speed,
+                       pulse_width, encoder_data->speed_m_per_s);
+            }
+            else
+            {
+                // printf("Right ");
+                // printf("Speed: %.2f m/s, Pulse Width: %lluus\n ", speed,
+                //        pulse_width);
+            }
         }
 
         encoder_data->_last_pulse_time = current_time;

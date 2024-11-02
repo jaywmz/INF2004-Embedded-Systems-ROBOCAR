@@ -25,7 +25,7 @@ static void start_motor(uint slice_num, int duty_cycle)
     pwm_set_chan_level(slice_num, PWM_CHAN_A, duty_cycle);
 }
 
-static void motor1_forward(int duty_cycle)
+void motor1_forward(int duty_cycle)
 {
     gpio_put(MOTOR1_IN1_PIN, 1);
     gpio_put(MOTOR1_IN2_PIN, 0);
@@ -33,7 +33,7 @@ static void motor1_forward(int duty_cycle)
     start_motor(slice_num_motor1, duty_cycle);
 }
 
-static void motor1_backward(int duty_cycle)
+void motor1_backward(int duty_cycle)
 {
     gpio_put(MOTOR1_IN1_PIN, 0);
     gpio_put(MOTOR1_IN2_PIN, 1);
@@ -41,7 +41,7 @@ static void motor1_backward(int duty_cycle)
     start_motor(slice_num_motor1, duty_cycle);
 }
 
-static void motor2_forward(int duty_cycle)
+void motor2_forward(int duty_cycle)
 {
     gpio_put(MOTOR2_IN1_PIN, 1);
     gpio_put(MOTOR2_IN2_PIN, 0);
@@ -49,7 +49,7 @@ static void motor2_forward(int duty_cycle)
     start_motor(slice_num_motor2, duty_cycle);
 }
 
-static void motor2_backward(int duty_cycle)
+void motor2_backward(int duty_cycle)
 {
     gpio_put(MOTOR2_IN1_PIN, 0);
     gpio_put(MOTOR2_IN2_PIN, 1);
@@ -121,6 +121,15 @@ void set_direction(int direction, uint in1_pin, uint in2_pin)
     }
 }
 
+float pid_compute(PIDController *pid, float measurement)
+{
+    float error = pid->setpoint - measurement;
+    pid->integral += error;
+    float derivative = error - pid->previous_error;
+    pid->previous_error = error;
+    return (pid->kp * error) + (pid->ki * pid->integral) + (pid->kd * derivative);
+}
+
 void strong_start(int direction)
 {
     // printf("Starting with high power burst\n");
@@ -155,11 +164,12 @@ void pid_init(PIDController *pid, double kp, double ki, double kd,
     pid->kp = kp;
     pid->ki = ki;
     pid->kd = kd;
-    pid->setpoint = setpoint;
+    pid->setpoint = 0.0;
     pid->integral = 0.0;
     pid->prev_error = 0.0;
     pid->output_min = output_min;
     pid->output_max = output_max;
+    pid->previous_error = 0.0;
     pid->last_time = to_ms_since_boot(get_absolute_time());
 }
 

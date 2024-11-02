@@ -40,12 +40,14 @@ typedef struct
     double output_min;
     double output_max;
     uint32_t last_time;
+    float previous_error;
 } PIDController;
 
 void init_motors();
 void pid_init(PIDController *pid, double kp, double ki, double kd,
               double setpoint, double output_min, double output_max);
 double pid_update(PIDController *pid, double measurement);
+float pid_compute(PIDController *pid, float measurement);
 void pid_reset(PIDController *pid);
 
 void move_forward();
@@ -57,5 +59,10 @@ void stop_motors();
 
 void set_motor_speed(uint slice_num, int duty_cycle);
 void set_direction(int direction, uint in1_pin, uint in2_pin);
+
+void motor1_forward(int duty_cycle);
+void motor1_backward(int duty_cycle);
+void motor2_forward(int duty_cycle);
+void motor2_backward(int duty_cycle);
 
 #endif // PICO_MOTOR_H

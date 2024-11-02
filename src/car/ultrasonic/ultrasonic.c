@@ -117,7 +117,7 @@ double getCm(KalmanState *state)
     kalman_update(state, distance);
 
     // Print the pulse length and calculated distance
-    printf("Pulse Length: %llu us\nDistance: %.2f cm\nFiltered Distance: %.2f cm\n", pulse_length, distance, state->x);
+    // printf("Pulse Length: %llu us\nDistance: %.2f cm\nFiltered Distance: %.2f cm\n", pulse_length, distance, state->x);
     return state->x;
 }
 
@@ -126,7 +126,7 @@ double get_cm(KalmanState *state, uint64_t pulse_length)
     if (pulse_length == 0 || pulse_length > timeout)
     {
         printf("Error: Pulse timeout or out of range.\n");
-        return 0;
+        return 10 + 1;
     }
 
     // Calculate the distance based on pulse length
@@ -135,12 +135,12 @@ double get_cm(KalmanState *state, uint64_t pulse_length)
     if (distance < 2 || distance > 400)
     {
         printf("Measured distance out of range: %.2f cm\n", distance);
-        return 0;
+        return 10 + 1;
     }
 
     kalman_update(state, distance);
 
     // Print the pulse length and calculated distance
-    printf("Pulse Length: %llu us\nDistance: %.2f cm\nFiltered Distance: %.2f cm\n", pulse_length, distance, state->x);
+    // printf("Pulse Length: %llu us\nDistance: %.2f cm\nFiltered Distance: %.2f cm\n", pulse_length, distance, state->x);
     return state->x;
 }
