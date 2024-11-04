@@ -2,42 +2,43 @@
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
 #include "pico/time.h"
-#include <string.h>  // Include this for strcmp
+#include <string.h>  
 
 // ADC pin for the IR sensor
 #define IR_SENSOR_PIN 26  // GPIO 26 is connected to the ADC input
 
-// Thresholds and Constants
-#define THRESHOLD 2200  // Fixed threshold for detecting black vs. white
-#define NUM_SAMPLES 20  // Number of samples to average
-
-// Barcode Scanning Parameters
-#define CAR_SPEED_CM_PER_SEC 0.5              // Constant speed of the car in cm/s - testing 0.5cm per second
-#define MAX_BARS 9                           // Number of bars (5 black, 4 white) in Code 39 character
-#define END_BAR_SPACE_THRESHOLD 500000        // Increase threshold for detecting end-of-barcode space
+// Thresholds and parameters
+#define THRESHOLD 3000           // Threshold to distinguish between black and white
+#define NUM_SAMPLES 5            // Number of samples to average
+#define MAX_BARS 29              // Number of bars in Code 39 (start, character, stop)
+#define END_BAR_SPACE_THRESHOLD 5000000  // Threshold for detecting end-of-barcode space
+#define NOISE_THRESHOLD 5000     // Minimum pulse width to consider as valid bar
+#define DEBOUNCE_DELAY 5000      // Minimum delay between transitions in microseconds
 
 // Variables for pulse measurement
 volatile uint64_t last_transition_time = 0;  // Time of the last transition
-volatile uint64_t pulse_duration_us = 0;     // Duration of the last pulse in microseconds
-bool is_black = false;                       // Track whether the current surface is black
+const char* previous_color = "White";        // Track previous surface color ("Black" or "White")
 bool decoding_active = false;                // Flag to indicate if decoding has started
+bool initial_black_detected = false;         // Flag to confirm first Black bar
 
 // Buffer for storing barcode data
-uint16_t bar_widths[MAX_BARS];               // Array to store bar widths
-bool bar_colors[MAX_BARS];                   // Array to store colors (true for black, false for white)
+uint64_t bar_widths[MAX_BARS];               // Array to store bar widths
+const char* bar_colors[MAX_BARS];            // Array to store colors ("Black" or "White")
 int bar_count = 0;                           // Counter for bars in a single character
+uint64_t max_width = 0;                      // Track max width dynamically
 
 // Code 39 Encoding (Narrow = 1, Wide = 2)
 const char* code39_patterns[] = {
-    "111221211", "211211112", "112211112", "212211111", "111221112", // 0-4
-    "211221111", "112221111", "111211212", "211211211", "112211211", // 5-9
-    "211112112", "112112112", "212112111", "111122112", "211122111", // A-E
-    "112122111", "111112212", "211112211", "112112211", "111122211", // F-J
-    "211111122", "112111122", "212111121", "111121122", "211121121", // K-O
-    "112121121", "111111222", "211111221", "112111221", "111121221", // P-T
-    "221111112", "122111112", "222111111", "121121112", "221121111", // U-Y
-    "122121111", "121111212", "221111211", "122111211"             // Z-*
+    "12112121111112212111121121211", "12112121112112111121121121211", "12112121111122111121121121211", "12112121112122111111121121211", "12112121111112211121121121211", // 0-4
+    "12112121112112211111121121211", "12112121111122211111121121211", "12112121111112112121121121211", "12112121112112112111121121211", "12112121111122112111121121211", // 5-9
+    "12112121112111121121121121211", "12112121111121121121121121211", "12112121112121121111121121211", "12112121111111221121121121211", "12112121112111221111121121211", // A-E
+    "12112121111121221111121121211", "12112121111111122121121121211", "12112121112111122111121121211", "12112121111121122111121121211", "12112121111111222111121121211", // F-J
+    "12112121112111111221121121211", "12112121111121111221121121211", "12112121112121111211121121211", "12112121111111211221121121211", "12112121112111211211121121211", // K-O
+    "12112121111121211211121121211", "12112121111111112221121121211", "12112121112111112211121121211", "12112121111121112211121121211", "12112121111111212211121121211", // P-T
+    "12112121112211111121121121211", "12112121111221111121121121211", "12112121112221111111121121211", "12112121111211211121121121211", "12112121112211211111121121211", // U-Y
+    "12112121111221211111121121211", "12112121111211112121121121211", "12112121112211112111121121211", "12112121112222222211121121211"              // Z-*
 };
+
 const char code39_chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-*";
 
 // Function to read a single ADC value
@@ -45,143 +46,152 @@ uint16_t read_adc() {
     return adc_read();  
 }
 
-// Adaptive function to classify a bar as narrow or wide based on relative widths
-char classify_bar_width(uint16_t width, uint16_t min_width) {
-    return (width <= min_width * 1.5) ? '1' : '2';  // Narrow if <= 1.5 times the smallest width; otherwise wide
+// Adaptive function to classify a bar as narrow or wide based on max_width
+char classify_bar_width(uint64_t width, uint64_t max_width) {
+    return (width <= max_width / 4) ? '1' : '2';  // Narrow if <= 1/3 of max width; otherwise wide
+}
+
+// Function to reset bar data
+void reset_bar_data() {
+    for (int i = 0; i < MAX_BARS; i++) {
+        bar_widths[i] = 0;
+        bar_colors[i] = "Unknown";
+    }
+    bar_count = 0;
+    max_width = 0;
+    initial_black_detected = false;
+}
+
+// Function to display captured bars for debugging
+void display_captured_bars() {
+    printf("Captured Bar Widths (during decoding):\n");
+    for (int i = 0; i < MAX_BARS; i++) {
+        printf("Bar #%d: Width = %llu, Color = %s\n", i, bar_widths[i], bar_colors[i]);
+    }
 }
 
 // Function to decode a single character from the stored bar widths and colors
 char decode_character() {
-    if (bar_count != MAX_BARS) {
-        printf("Debug: Bar count is not 9, unable to decode\n");
-        return '?';  // Ensure there are exactly 9 bars (Code 39 pattern)
-    }
+    uint64_t threshold = max_width / 3;
+    printf("Debug: Max Width = %llu, Threshold = %llu\n", max_width, threshold);
 
-    // Find the minimum width to use as a baseline for narrow vs. wide classification
-    uint16_t min_width = bar_widths[0];
-    for (int i = 1; i < MAX_BARS; i++) {
-        if (bar_widths[i] < min_width) {
-            min_width = bar_widths[i];
-        }
-    }
-    
-    // Construct the pattern as a string of '1's and '2's for both left-to-right and right-to-left
+    // Construct both patterns (left-to-right and right-to-left)
     char pattern[MAX_BARS + 1];
-    char reversed_pattern[MAX_BARS + 1];
-
-    printf("Debug: Constructing patterns for decoding\n");
+    char reverse_pattern[MAX_BARS + 1];
+    
     for (int i = 0; i < MAX_BARS; i++) {
-        pattern[i] = classify_bar_width(bar_widths[i], min_width);
-        reversed_pattern[MAX_BARS - i - 1] = pattern[i];  // Reverse the order for reversed_pattern
+        pattern[i] = classify_bar_width(bar_widths[i], max_width);
+        reverse_pattern[MAX_BARS - i - 1] = pattern[i];  // Reverse pattern
     }
-    pattern[MAX_BARS] = '\0';  // Null-terminate the pattern string
-    reversed_pattern[MAX_BARS] = '\0';
+    pattern[MAX_BARS] = '\0';
+    reverse_pattern[MAX_BARS] = '\0';
 
-    printf("Debug: Pattern: %s, Reversed Pattern: %s\n", pattern, reversed_pattern);
+    printf("Debug: Pattern (L->R): %s\n", pattern);
+    printf("Debug: Pattern (R->L): %s\n", reverse_pattern);
 
-    // Match the pattern against Code 39 patterns in both directions
+    // Check both patterns for matches
     for (int i = 0; i < sizeof(code39_patterns) / sizeof(code39_patterns[0]); i++) {
         if (strcmp(pattern, code39_patterns[i]) == 0) {
-            printf("Debug: Matched pattern in left-to-right direction\n");
-            return code39_chars[i];  // Return the matching character for left-to-right
+            printf("Debug: Matched pattern L->R\n");
+            return code39_chars[i];
         }
-        if (strcmp(reversed_pattern, code39_patterns[i]) == 0) {
-            printf("Debug: Matched pattern in right-to-left direction\n");
-            return code39_chars[i];  // Return the matching character for right-to-left
+        if (strcmp(reverse_pattern, code39_patterns[i]) == 0) {
+            printf("Debug: Matched pattern R->L\n");
+            return code39_chars[i];
         }
     }
     printf("Debug: No matching pattern found\n");
-    return '?';  // Return '?' if no match is found
+    return '?';
 }
 
 // Function to decode the entire barcode sequence
 void decode_barcode() {
     printf("Decoding barcode...\n");
+    display_captured_bars();  // Display the captured bars for debugging
     char decoded_char = decode_character();
+    printf("Decoded Character: %c\n", decoded_char);
 
-    // Check if a valid character was returned
-    if (decoded_char != '?') {
-        printf("Decoded Character: %c\n", decoded_char);
-    } else {
-        printf("Debug: Unable to decode the character, returned '?'\n");
-    }
-
-    // Clear the buffer and reset decoding state after decoding
-    bar_count = 0;
-    decoding_active = false;  // Return to idle mode
+    reset_bar_data();
+    decoding_active = false;
 }
-
 
 // Function to detect surface contrast using the IR sensor and store pulse widths
 void detect_surface_contrast() {
-    uint32_t adc_sum = 0;  // Variable to hold the sum of ADC readings
+    uint32_t adc_sum = 0;
     for (int i = 0; i < NUM_SAMPLES; i++) {
-        adc_sum += read_adc();  // Sum up ADC readings
-        sleep_us(100);  // Short delay between readings to allow ADC to stabilize
+        adc_sum += read_adc();
+        sleep_us(100);
     }
-    uint16_t adc_value = adc_sum / NUM_SAMPLES;  // Calculate average ADC value
-   // printf("Debug: ADC Value: %u\n", adc_value);  // Print ADC value for debugging
+    uint16_t adc_value = adc_sum / NUM_SAMPLES;
 
-    // Determine the current surface based on a static threshold
-    bool current_is_black = (adc_value > THRESHOLD);  // Black threshold: anything above 2200
+    // Determine the current surface color
+    const char* current_color = (adc_value > THRESHOLD) ? "Black" : "White";
 
-    // If in idle mode, only start decoding when a black bar is detected
-    if (!decoding_active && current_is_black) {
-        decoding_active = true;  // Start decoding on the first black bar
-        bar_count = 0;  // Reset the bar count for a new barcode
-        printf("Debug: Starting barcode detection\n");
+    // Start decoding only upon detecting the first black bar
+    if (!decoding_active && strcmp(current_color, "Black") == 0) {
+        decoding_active = true;
+        reset_bar_data();
+        last_transition_time = time_us_64();  // Reset transition time to start fresh timing
+        printf("Starting barcode detection\n");
     }
 
-    // If decoding is active, process the bar widths
-    if (decoding_active) {
-        // Update surface state and transition timing
-        if (current_is_black != is_black) {
-            uint64_t current_time = time_us_64();  // Get the current time
-            pulse_duration_us = current_time - last_transition_time;  // Calculate pulse width for the previous color
+    // Ensure the first bar is Black before recording
+    if (decoding_active && !initial_black_detected && strcmp(current_color, "Black") == 0) {
+        initial_black_detected = true;
+    }
 
-            // Store the pulse width and color in the buffer if not exceeding MAX_BARS
-            if (bar_count < MAX_BARS) {
+    // Process bar widths when decoding is active and first black has been detected
+    if (decoding_active && initial_black_detected) {
+        if (strcmp(current_color, previous_color) != 0) {  // Detect color transition
+            uint64_t current_time = time_us_64();
+            uint64_t pulse_duration_us = current_time - last_transition_time;
+
+            // Only store valid bar if it exceeds noise threshold and debounce delay
+            if (pulse_duration_us > NOISE_THRESHOLD + DEBOUNCE_DELAY && bar_count < MAX_BARS) {
                 bar_widths[bar_count] = pulse_duration_us;
-                bar_colors[bar_count] = current_is_black;
-                printf("Debug: Captured bar #%d: Width = %u us", bar_count, pulse_duration_us);
+                bar_colors[bar_count] = previous_color;
+
+                printf("Captured Bar Color: %s\n", previous_color);
+                printf("Captured bar #%d: Width = %llu us\n", bar_count, pulse_duration_us);
+
+                // Update max width dynamically if this pulse width is larger
+                if (pulse_duration_us > max_width) {
+                    max_width = pulse_duration_us;
+                    printf("Updated Max Width: %llu\n", max_width);
+                }
                 bar_count++;
             }
 
-            // If we've collected 9 bars (5 black, 4 white), decode the character
+            // Decode when 29 bars have been captured
             if (bar_count == MAX_BARS) {
                 decode_barcode();
             }
-
-            // Check for end-of-barcode signal based on a long white space
-            if (!current_is_black && pulse_duration_us > END_BAR_SPACE_THRESHOLD) {
+             // Check for end-of-barcode signal based on a long white space
+            if (strcmp(current_color, "White") == 0 && pulse_duration_us > END_BAR_SPACE_THRESHOLD) {
                 printf("Debug: Detected end-of-barcode signal\n");
                 decode_barcode();  // Trigger decoding for the accumulated bars
             }
 
-            // Update state and last transition time
-            is_black = current_is_black;  // Update current state
-            last_transition_time = current_time;  // Record the time of the transition
+
+            previous_color = current_color;
+            last_transition_time = current_time;
         }
     }
 }
 
 int main() {
-    // Initialize stdio
     stdio_init_all();
-    sleep_ms(500);  // Small delay to allow initialization
+    sleep_ms(500);
 
-    // Initialize ADC for the IR sensor
     adc_init();
-    adc_gpio_init(IR_SENSOR_PIN);  // Initialize GPIO for ADC input (IR sensor)
-    adc_select_input(0);  // Select ADC channel 0 (connected to GPIO 26)
+    adc_gpio_init(IR_SENSOR_PIN);
+    adc_select_input(0);
 
     while (1) {
-        // Detect surface contrast using the IR sensor
         detect_surface_contrast();
-
-        // Small delay before the next iteration
-        sleep_us(1000);  // Short delay for better responsiveness
+        sleep_us(1000);
     }
 
     return 0;
 }
+
