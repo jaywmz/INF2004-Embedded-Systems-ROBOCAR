@@ -80,8 +80,8 @@ void read_encoder_data(uint encoder_pin, EncoderData *encoder_data)
             encoder_data->pulse_count++;
             if (encoder_pin == LEFT_ENCODER_PIN)
             {
-                printf("Left Speed: %.2f m/s, Pulse Width: %lluus, Filtered Speed: %.2f m/s\n", speed,
-                       pulse_width, encoder_data->speed_m_per_s);
+                // printf("Left Speed: %.2f m/s, Pulse Width: %lluus, Filtered Speed: %.2f m/s\n", speed,
+                //        pulse_width, encoder_data->speed_m_per_s);
             }
             else
             {

@@ -141,6 +141,6 @@ double get_cm(KalmanState *state, uint64_t pulse_length)
     kalman_update(state, distance);
 
     // Print the pulse length and calculated distance
-    // printf("Pulse Length: %llu us\nDistance: %.2f cm\nFiltered Distance: %.2f cm\n", pulse_length, distance, state->x);
+    printf("Pulse Length: %llu us\nDistance: %.2f cm\nFiltered Distance: %.2f cm\n", pulse_length, distance, state->x);
     return state->x;
 }
