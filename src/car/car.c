@@ -7,14 +7,13 @@
 #include "task.h"
 #include <stdio.h>
 
-
 #include "hardware/pwm.h"
 
 #ifndef RUN_FREERTOS_ON_CORE
 #define RUN_FREERTOS_ON_CORE 0
 #endif
 
-Compass compass;
+// Compass compass;
 EncoderData left_encoder_data, right_encoder_data;
 KalmanState kalman_state;
 
@@ -71,14 +70,6 @@ void rotate_90_degrees_right()
     rotate_90_degrees(8);
 }
 
-void rotate_90_degrees_left()
-{
-    // Set motor directions for turning left
-    set_direction(GO_BACKWARD, MOTOR1_IN1_PIN, MOTOR1_IN2_PIN);
-    set_direction(GO_FORWARD, MOTOR2_IN1_PIN, MOTOR2_IN2_PIN);
-    rotate_90_degrees(7);
-}
-
 void vTaskEncoder(__unused void *pvParameters)
 {
 
@@ -96,60 +87,19 @@ void vTaskMotor(__unused void *pvParameters)
     int state = 0;
     while (1)
     {
-        if (compass.p > 20)
+
+        if (PLS_STOP == 1)
         {
-            if (PLS_STOP == 1)
-            {
-                stop_motors();
-            }
-            else
-            {
-                move_forward();
-            }
-            // move_forward();
-        }
-        else if (compass.p < -20)
-        {
-            move_backward();
-        }
-        else if (compass.r > 20)
-        {
-            turn_right();
-        }
-        else if (compass.r < -20)
-        {
-            turn_left();
-        }
-        else if (compass.y > 20)
-        {
-            if (state == 0)
-            {
-                rotate_90_degrees_right();
-                state = 1;
-            }
-        }
-        else if (compass.y < -20)
-        {
-            if (state == 1)
-            {
-                rotate_90_degrees_left();
-                state = 0;
-            }
+            stop_motors();
+            // turn right
+            rotate_90_degrees_right();
+
+            // code to move forward 90 cm
         }
         else
         {
-            stop_motors();
+            move_forward();
         }
-    }
-}
-
-void vTaskCompass(__unused void *pvParameters)
-{
-    while (1)
-    {
-        get_compass_data(&compass);
-        // printf("p=%d, r=%d, y=%d\n", compass.p, compass.r, compass.y);
-        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
@@ -182,9 +132,7 @@ void vTaskUltrasonic(__unused void *pvParameters)
 
 void vLaunch()
 {
-    TaskHandle_t motorTask, compassTask, encoderTask, distanceTask;
-    xTaskCreate(vTaskCompass, "CompassTask", 2048, NULL, tskIDLE_PRIORITY + 1UL,
-                &compassTask);
+    TaskHandle_t motorTask, encoderTask, distanceTask;
     xTaskCreate(vTaskEncoder, "EncoderTask", 2048, NULL, tskIDLE_PRIORITY + 1UL,
                 &encoderTask);
     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
@@ -195,7 +143,6 @@ void vLaunch()
 int main(void)
 {
     stdio_init_all();
-    init_mqtt();
     init_encoder();
     init_motors();
     init_ultrasonic();
