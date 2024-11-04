@@ -35,20 +35,5 @@
     "raspberry-pi-pico.cmakeAutoConfigure": true,
     "raspberry-pi-pico.useCmakeTools": false,
     "raspberry-pi-pico.cmakePath": "${HOME}/.pico-sdk/cmake/v3.28.6/bin/cmake",
-    "raspberry-pi-pico.ninjaPath": "${HOME}/.pico-sdk/ninja/v1.12.1/ninja",
-    "raspberry-pi-pico.python3Path": "${HOME}/.pico-sdk/python/3.12.1/python.exe",
-    "files.associations": {
-        "freertos.h": "c",
-        "compare": "c",
-        "cstdint": "c",
-        "algorithm": "c",
-        "ip4_addr.h": "c",
-        "cyw43_arch.h": "c",
-        "mdns.h": "c",
-        "mqtt.h": "c",
-        "motor.h": "c",
-        "freertosconfig.h": "c",
-        "encoder.h": "c",
-        "stdio.h": "c"
-    }
+    "raspberry-pi-pico.ninjaPath": "${HOME}/.pico-sdk/ninja/v1.12.1/ninja"
 }
