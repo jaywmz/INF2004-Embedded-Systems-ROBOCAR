@@ -9,7 +9,7 @@
 #define IR_SENSOR_PIN 26  // GPIO 26 is connected to the ADC input
 
 // Thresholds and parameters
-#define THRESHOLD 3000           // Threshold to distinguish between black and white (above = Black) (below = White)
+#define THRESHOLD 2000           // Threshold to distinguish between black and white (above = Black) (below = White)
 #define NUM_SAMPLES 5            // Number of samples to average
 #define MAX_BARS 29              // Number of bars in Code 39 (start, character, stop)
 #define END_BAR_SPACE_THRESHOLD 5000000  // Threshold for detecting end-of-barcode space
