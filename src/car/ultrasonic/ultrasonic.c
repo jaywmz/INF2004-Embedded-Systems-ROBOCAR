@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-const int timeout = 26000;               // Timeout for ultrasonic sensor (about 4.5 meters)
-volatile absolute_time_t start_time = 0; // Start time for echo pulse
+const int timeout = 26000;           // Timeout for ultrasonic sensor (about 4.5 meters)
+volatile absolute_time_t start_time; // Start time for echo pulse
 
 // Function to trigger the HC-SR04 and measure the pulse length on the ECHO pin
 uint64_t measure_pulse_length()
