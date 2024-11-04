@@ -3,6 +3,7 @@ add_subdirectory(mqtt)
 add_subdirectory(encoder)
 add_subdirectory(ultrasonic)
 add_subdirectory(barcode)
+add_subdirectory(linefollow)
 
 add_executable(car
     car.c
@@ -19,6 +20,7 @@ target_include_directories(car PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/encoder
     ${CMAKE_CURRENT_LIST_DIR}/ultrasonic
     ${CMAKE_CURRENT_LIST_DIR}/barcode
+    ${CMAKE_CURRENT_LIST_DIR}/linefollow
 )
 
 target_link_libraries(car
@@ -27,6 +29,7 @@ target_link_libraries(car
     encoder
     ultrasonic
     barcode
+    linefollow
     pico_stdlib
     FreeRTOS-Kernel-Heap4 # FreeRTOS kernel and dynamic heap
 )
