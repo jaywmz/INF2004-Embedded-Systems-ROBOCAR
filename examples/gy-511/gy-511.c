@@ -72,26 +72,6 @@ void read_mag(int16_t* mag_data) {
     mag_data[0] = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
     mag_data[1] = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
     mag_data[2] = (int16_t)(buffer[5] << 8 | buffer[4]); // Z-axis
-
-    // // Raw data
-    // int16_t raw_x = (int16_t)(buffer[1] << 8 | buffer[0]); // X-axis
-    // int16_t raw_y = (int16_t)(buffer[3] << 8 | buffer[2]); // Y-axis
-    // int16_t raw_z = (int16_t)(buffer[5] << 8 | buffer[4]); // Z-axis
-
-    // // Static variables to store previous filtered values
-    // static float filtered_x = 0.0f;
-    // static float filtered_y = 0.0f;
-    // static float filtered_z = 0.0f;
-
-    // // Apply low-pass filter to each axis
-    // filtered_x = ALPHA * raw_x + (1 - ALPHA) * filtered_x;
-    // filtered_y = ALPHA * raw_y + (1 - ALPHA) * filtered_y;
-    // filtered_z = ALPHA * raw_z + (1 - ALPHA) * filtered_z;
-
-    // // Store the filtered results in accel_data output array
-    // mag_data[0] = (int16_t)filtered_x;
-    // mag_data[1] = (int16_t)filtered_y;
-    // mag_data[2] = (int16_t)filtered_z;
 }
 
 void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
@@ -100,7 +80,7 @@ void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
     *pitch = (int16_t)round( atan2(accel_y, sqrt(accel_x * accel_x + accel_z * accel_z)) * (180.0 / M_PI) );
     *roll = (int16_t)round( atan2(accel_x, sqrt(accel_y * accel_y + accel_z * accel_z)) * (180.0 / M_PI) );
 
-    // Tilt-compensated yaw from magnetometer
+    // Calculate yaw from magnetometer
     *yaw = (int16_t)round( atan2(mag_y, mag_x) * (180.0 / M_PI) );
     if (*yaw < 0) {
         *yaw += 360;
