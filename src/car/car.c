@@ -104,8 +104,12 @@ void adjust_motor_speeds_with_pid()
 
     // Apply adjustments to maintain straight movement
     // set_motor_speed(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), NORMAL_DUTY_CYCLE + left_duty_adjustment);
-    set_motor_speed(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), NORMAL_DUTY_CYCLE + left_duty_adjustment);
-    set_motor_speed(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), NORMAL_DUTY_CYCLE + right_duty_adjustment);
+    //  set_motor_speed(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), 3500);
+    //  set_motor_speed(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), 4000);
+
+    // Apply adjustments to maintain straight movement with a 250 bias on motor 2
+    motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment);
+    motor2_forward(NORMAL_DUTY_CYCLE + right_duty_adjustment); // Adding bias here
 }
 
 void vTaskEncoder(__unused void *pvParameters)
@@ -137,8 +141,15 @@ void vTaskMotor(__unused void *pvParameters)
         }
         else
         {
-            adjust_motor_speeds_with_pid();
-            move_forward();
+            if (state == 0)
+            {
+                strong_start(GO_FORWARD); // Initiate burst start
+                state = 1;                // Mark as started to avoid multiple bursts
+            }
+            else
+            {
+                adjust_motor_speeds_with_pid(); // Continue with PID adjustments
+            }
         }
     }
 }
