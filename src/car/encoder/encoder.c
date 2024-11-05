@@ -24,6 +24,7 @@ typedef struct
     float x; // Estimated value
 } KalmanState;
 
+// Initializes the Kalman filter state with given parameters
 void encoder_kalman_init(EncoderKalmanState *state, float q, float r, float p, float initial_value)
 {
     state->q = q;
@@ -32,7 +33,9 @@ void encoder_kalman_init(EncoderKalmanState *state, float q, float r, float p, f
     state->x = initial_value;
     state->k = 0.0;
 }
+// USED in car.c - This function is called in `vTaskEncoder` to initialize the Kalman filter state for each encoder.
 
+// Updates the Kalman filter with a new speed measurement
 void encoder_kalman_update(EncoderKalmanState *state, float measurement)
 {
     // Prediction update
@@ -43,8 +46,9 @@ void encoder_kalman_update(EncoderKalmanState *state, float measurement)
     state->x += state->k * (measurement - state->x);
     state->p *= (1 - state->k);
 }
+// USED indirectly in car.c - This function is called within `read_encoder_data` to update the Kalman filter with new speed measurements.
 
-// Function to calculate speed based on pulse width
+// Calculates the speed of the wheel based on the pulse width (time between encoder notches)
 static float calculate_speed(uint64_t pulse_width)
 {
     if (pulse_width == 0)
@@ -59,7 +63,9 @@ static float calculate_speed(uint64_t pulse_width)
     // Convert to linear speed (distance per second) in meters per second
     return rotations_per_second * WHEEL_CIRCUMFERENCE;
 }
+// NOT USED directly in car.c - This function is called within `read_encoder_data` to compute speed, but not directly in `car.c`.
 
+// Reads data from the encoder pin, calculates the speed, and applies Kalman filtering
 void read_encoder_data(uint encoder_pin, EncoderData *encoder_data)
 {
     uint64_t current_time = time_us_64();
@@ -67,24 +73,25 @@ void read_encoder_data(uint encoder_pin, EncoderData *encoder_data)
     bool current_state = gpio_get(encoder_pin);
     if (current_state != encoder_data->_last_pin_state)
     {
-
         uint64_t pulse_width = current_time - encoder_data->_last_pulse_time;
 
-        // I only care about rising edges
+        // Only track rising edges of the encoder signal
         if (current_state == 1 && pulse_width > 0 && pulse_width < 1000000)
         {
             encoder_data->pulse_width = pulse_width;
-            float speed = calculate_speed(pulse_width);
-            encoder_kalman_update(&encoder_data->kalman_state, speed);
+            float speed = calculate_speed(pulse_width); // Calls `calculate_speed` to get speed
+            encoder_kalman_update(&encoder_data->kalman_state, speed); // Updates speed using Kalman filter
             encoder_data->speed_m_per_s = encoder_data->kalman_state.x;
             encoder_data->pulse_count++;
             if (encoder_pin == LEFT_ENCODER_PIN)
             {
+                // Debugging output for the left encoder (commented out)
                 // printf("Left Speed: %.2f m/s, Pulse Width: %lluus, Filtered Speed: %.2f m/s\n", speed,
                 //        pulse_width, encoder_data->speed_m_per_s);
             }
             else
             {
+                // Debugging output for the right encoder (commented out)
                 // printf("Right ");
                 // printf("Speed: %.2f m/s, Pulse Width: %lluus\n ", speed,
                 //        pulse_width);
@@ -95,8 +102,9 @@ void read_encoder_data(uint encoder_pin, EncoderData *encoder_data)
     }
     encoder_data->_last_pin_state = current_state;
 }
+// USED in car.c - This function is called in `vTaskEncoder` to continuously read encoder data, calculate speed, and update pulse counts.
 
-// Initialization function for encoders and GPIO setup
+// Initializes the GPIO pins for the left and right encoders
 void init_encoder()
 {
     // Initialize GPIO pins for left and right encoders
@@ -108,3 +116,4 @@ void init_encoder()
     gpio_set_dir(RIGHT_ENCODER_PIN, GPIO_IN);
     gpio_pull_up(RIGHT_ENCODER_PIN);
 }
+// USED in car.c - This function is called in `main` to set up the GPIO pins for the encoders.
