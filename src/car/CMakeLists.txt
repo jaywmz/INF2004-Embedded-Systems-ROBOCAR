@@ -1,5 +1,5 @@
 add_subdirectory(motor)
-add_subdirectory(mqtt)
+# add_subdirectory(mqtt)
 add_subdirectory(encoder)
 add_subdirectory(ultrasonic)
 #add_subdirectory(barcode)
@@ -15,7 +15,7 @@ target_compile_definitions(car PRIVATE
 
 target_include_directories(car PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
-    ${CMAKE_CURRENT_LIST_DIR}/mqtt
+  #  ${CMAKE_CURRENT_LIST_DIR}/mqtt
     ${CMAKE_CURRENT_LIST_DIR}/motor
     ${CMAKE_CURRENT_LIST_DIR}/encoder
     ${CMAKE_CURRENT_LIST_DIR}/ultrasonic
@@ -25,7 +25,7 @@ target_include_directories(car PRIVATE
 
 target_link_libraries(car
     motor
-    mqtt
+  #  mqtt
     encoder
     ultrasonic
 #    barcode
