@@ -101,9 +101,14 @@ void move_forward_distance(float target_distance_cm)
 
 void adjust_motor_speeds_with_pid()
 {
+    // Try to implement this, should start fast then slow down (Method in motor.c)
+    static int initialized = 0; // Flag to track if strong start has been used
+    if (!initialized)
+    {
+        strong_start(GO_FORWARD); // Perform strong start if not done yet
+        initialized = 1;          // Mark as initialized to avoid repeating strong start
+    }
 
-    // Start moving forward with an initial strong start
-    strong_start(GO_FORWARD);
     // Calculate an average target to keep both motors aligned
     int average_pulse_count = (left_encoder_data.pulse_count + right_encoder_data.pulse_count) / 2;
     pid_motor_1.setpoint = average_pulse_count;
