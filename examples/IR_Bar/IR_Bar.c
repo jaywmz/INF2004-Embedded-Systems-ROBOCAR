@@ -1,3 +1,5 @@
+
+
 #include "pico/stdlib.h"
 #include "hardware/pwm.h"
 #include "FreeRTOS.h"
@@ -7,12 +9,12 @@
 #include <string.h>
 
 // Define GPIO pins for motors
-#define L_MOTOR_PWM_PIN 2
-#define L_MOTOR_DIR_PIN1 0
-#define L_MOTOR_DIR_PIN2 1
-#define R_MOTOR_PWM_PIN 6
-#define R_MOTOR_DIR_PIN1 4
-#define R_MOTOR_DIR_PIN2 5
+#define L_MOTOR_PWM_PIN 11
+#define L_MOTOR_DIR_PIN1 12
+#define L_MOTOR_DIR_PIN2 13
+#define R_MOTOR_PWM_PIN 10
+#define R_MOTOR_DIR_PIN1 14
+#define R_MOTOR_DIR_PIN2 15
 
 // PWM and speed settings
 #define MAX_DUTY_CYCLE 12500
@@ -105,7 +107,7 @@ void move_forward(uint32_t gpioLeft, uint32_t gpioRight, float speed)
     set_motor_speed(gpioRight, speed * 0.95, false); // Slight adjustment for balance
 }
 
-void straight_line_task(void *pvParameters)
+/*void straight_line_task(void *pvParameters)
 {
     float move_speed = 0.5; // 70% speed for forward movement
     while (true)
@@ -122,7 +124,16 @@ void straight_line_task(void *pvParameters)
         pwm_set_chan_level(slice_num_motor2, PWM_CHAN_A, 6000);
         vTaskDelay(pdMS_TO_TICKS(100));
     }
+}*/
+
+void straight_line_task(void *pvParameters) {
+    float move_speed = 0.5;  // 70% speed for forward movement
+    while (true) {
+        move_forward(L_MOTOR_PWM_PIN, R_MOTOR_PWM_PIN, move_speed);
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 }
+
 
 // Barcode Detection Code
 
@@ -314,6 +325,7 @@ int main()
     setup_pwm(L_MOTOR_PWM_PIN, R_MOTOR_PWM_PIN);
 
     TaskHandle_t straight_line_handle, detect_surface_contrast_handle;
+    //TaskHandle_t detect_surface_contrast_handle;
 
     xTaskCreate(straight_line_task, "Straight Line Task", 256, NULL, 1, &straight_line_handle);
     xTaskCreate(detect_surface_contrast_task, "Barcode Detection Task", 512, NULL, 1, &detect_surface_contrast_handle);
@@ -323,3 +335,4 @@ int main()
     {
     }
 }
+
