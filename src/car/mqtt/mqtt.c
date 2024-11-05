@@ -148,7 +148,7 @@ static err_t mqtt_test_connect(MQTT_CLIENT_T *state)
     ci.client_id = "Car";
     ci.client_user = NULL;
     ci.client_pass = NULL;
-    ci.keep_alive = 1;
+    ci.keep_alive = 60;
     ci.will_topic = NULL;
     ci.will_msg = NULL;
     ci.will_retain = 0;
