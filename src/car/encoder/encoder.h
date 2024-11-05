@@ -5,7 +5,7 @@
 #include "pico/types.h"
 
 // Encoder and Motor Configuration
-#define LEFT_ENCODER_PIN 7
+#define LEFT_ENCODER_PIN 27
 #define RIGHT_ENCODER_PIN 3
 
 typedef struct

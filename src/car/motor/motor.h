@@ -19,7 +19,7 @@
 // Speed settings
 #define MIN_DUTY_CYCLE 2500
 #define MAX_DUTY_CYCLE 12500
-#define NORMAL_DUTY_CYCLE 4375      // ~35% speed for normal operation
+#define NORMAL_DUTY_CYCLE 5000      // ~35% speed for normal operation
 #define BURST_DUTY_CYCLE 11250      // ~90% speed for initial burst
 #define HIGH_POWER_DUTY 7500        // ~60% speed for secondary phase
 #define BURST_DURATION_MS 500       // Initial burst duration
