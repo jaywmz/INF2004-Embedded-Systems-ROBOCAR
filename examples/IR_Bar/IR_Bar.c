@@ -7,41 +7,46 @@
 #include <string.h>  
 
 // Define GPIO pins for motors
-#define L_MOTOR_PWM_PIN 11
-#define L_MOTOR_DIR_PIN1 12
-#define L_MOTOR_DIR_PIN2 13
-#define R_MOTOR_PWM_PIN 10
-#define R_MOTOR_DIR_PIN1 14
-#define R_MOTOR_DIR_PIN2 15
+#define L_MOTOR_PWM_PIN 2
+#define L_MOTOR_DIR_PIN1 0
+#define L_MOTOR_DIR_PIN2 1
+#define R_MOTOR_PWM_PIN 6
+#define R_MOTOR_DIR_PIN1 4
+#define R_MOTOR_DIR_PIN2 5
+
+//#define L_MOTOR_PWM_PIN 11
+//#define L_MOTOR_DIR_PIN1 12
+//#define L_MOTOR_DIR_PIN2 13
+//#define R_MOTOR_PWM_PIN 10
+//#define R_MOTOR_DIR_PIN1 14
+//#define R_MOTOR_DIR_PIN2 15
 
 // PWM and speed settings
 #define MAX_DUTY_CYCLE 12500
 
 // IR Sensor
 #define IR_SENSOR_PIN 26          // GPIO 26 connected to ADC
-#define THRESHOLD 4085           // Black/White threshold
-#define NUM_SAMPLES 5
+#define THRESHOLD 2300          // Black/White threshold
+#define NUM_SAMPLES 2
 #define MAX_BARS 29
 #define NOISE_THRESHOLD 5000      // Minimum pulse width to consider valid
 #define DEBOUNCE_DELAY 5000       // Minimum delay between transitions in microseconds
-#define END_BAR_SPACE_THRESHOLD 5000000  // Threshold for detecting end-of-barcode space
+#define END_BAR_SPACE_THRESHOLD 3000000  // Threshold for detecting end-of-barcode space
+volatile uint64_t last_white_time = 0;       // Time when last white surface was detected
+#define MAX_WHITE_TIME 3000000   // Maximum time to stay on white before forcing a decode
 
 // Code 39 Encoding (Narrow = 1, Wide = 2)
 const char* code39_patterns[] = {
-    "12112121111112212111121121211", "12112121112112111121121121211", "12112121111122111121121121211",
-    "12112121112122111111121121211", "12112121111112211121121121211", "12112121112112211111121121211",
-    "12112121111122211111121121211", "12112121111112112121121121211", "12112121112112112111121121211",
-    "12112121111122112111121121211", "12112121112111121121121121211", "12112121111121121121121121211",
-    "12112121112121121111121121211", "12112121111111221121121121211", "12112121112111221111121121211",
-    "12112121111121221111121121211", "12112121111111122121121121211", "12112121112111122111121121211",
-    "12112121111121122111121121211", "12112121111111222111121121211", "12112121112111111221121121211",
-    "12112121111121111221121121211", "12112121112121111211121121211", "12112121111111211221121121211",
-    "12112121112111211211121121211", "12112121111121211211121121211", "12112121111111112221121121211",
-    "12112121112111112211121121211", "12112121111121112211121121211", "12112121111111212211121121211",
-    "12112121112211111121121121211", "12112121111221111121121121211", "12112121112221111111121121211",
-    "12112121111211211121121121211", "12112121112211211111121121211", "12112121111221211111121121211",
-    "12112121111211112121121121211", "12112121112211112111121121211", "12112121112222222211121121211" // A-Z, *
+    "12112121111112212111121121211", "12112121112112111121121121211", "12112121111122111121121121211", "12112121112122111111121121211", "12112121111112211121121121211", // 0-4
+    "12112121112112211111121121211", "12112121111122211111121121211", "12112121111112112121121121211", "12112121112112112111121121211", "12112121111122112111121121211", // 5-9
+    "12112121112111121121121121211", "12112121111121121121121121211", "12112121112121121111121121211", "12112121111111221121121121211", "12112121112111221111121121211", // A-E
+    "12112121111121221111121121211", "12112121111111122121121121211", "12112121112111122111121121211", "12112121111121122111121121211", "12112121111111222111121121211", // F-J
+    "12112121112111111221121121211", "12112121111121111221121121211", "12112121112121111211121121211", "12112121111111211221121121211", "12112121112111211211121121211", // K-O
+    "12112121111121211211121121211", "12112121111111112221121121211", "12112121112111112211121121211", "12112121111121112211121121211", "12112121111111212211121121211", // P-T
+    "12112121112211111121121121211", "12112121111221111121121121211", "12112121112221111111121121211", "12112121111211211121121121211", "12112121112211211111121121211", // U-Y
+    "12112121111221211111121121211", "12112121111211112121121121211", "12112121112211112111121121211", "12112121112222222211121121211"              // Z-*
 };
+
 
 const char code39_chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-*";
 
@@ -103,7 +108,7 @@ void move_forward(uint32_t gpioLeft, uint32_t gpioRight, float speed) {
 }
 
 void straight_line_task(void *pvParameters) {
-    float move_speed = 0.7;  // 70% speed for forward movement
+    float move_speed = 0.5;  // 70% speed for forward movement
     while (true) {
         move_forward(L_MOTOR_PWM_PIN, R_MOTOR_PWM_PIN, move_speed);
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -111,14 +116,18 @@ void straight_line_task(void *pvParameters) {
 }
 
 // Barcode Detection Code
-volatile uint64_t last_transition_time = 0;
-const char* previous_color = "White";
-bool decoding_active = false;
-bool initial_black_detected = false;
-uint64_t bar_widths[MAX_BARS];
-const char* bar_colors[MAX_BARS];
-int bar_count = 0;
-uint64_t max_width = 0;
+
+// Variables for pulse measurement
+volatile uint64_t last_transition_time = 0;  // Time of the last transition
+const char* previous_color = "White";        // Track previous surface color ("Black" or "White")
+bool decoding_active = false;                // Flag to indicate if decoding has started
+bool initial_black_detected = false;         // Flag to confirm first Black barr
+
+// Buffer for storing barcode data
+uint64_t bar_widths[MAX_BARS];               // Array to store bar widths
+const char* bar_colors[MAX_BARS];            // Array to store colors ("Black" or "White")
+int bar_count = 0;                           // Counter for bars in a single character
+uint64_t max_width = 0;                      // Track max width dynamically
 
 uint16_t read_adc() {
     return adc_read();
@@ -145,27 +154,33 @@ char classify_bar_width(uint64_t width, uint64_t max_width) {
     return (width <= max_width / 3) ? '1' : '2';
 }
 
+
+// Function to decode a single character from the stored bar widths and colors
 char decode_character() {
-    char pattern[MAX_BARS + 1];
-    char reverse_pattern[MAX_BARS + 1];
+    // Calculate max width only for captured bars to avoid empty entries
+    uint64_t threshold = max_width / 3;
+    printf("Debug: Max Width = %llu, Threshold = %llu\n", max_width, threshold);
+
+    // Construct the pattern and reverse pattern based on captured data
+    char pattern[MAX_BARS + 1] = {0};
+    char reverse_pattern[MAX_BARS + 1] = {0};
 
     for (int i = 0; i < bar_count; i++) {
         pattern[i] = classify_bar_width(bar_widths[i], max_width);
-        reverse_pattern[bar_count - i - 1] = pattern[i];  // Reverse pattern
+        reverse_pattern[bar_count - i - 1] = pattern[i];  // Reverse the pattern
     }
-    pattern[bar_count] = '\0';
-    reverse_pattern[bar_count] = '\0';
 
-    printf("Debug: Pattern (L->R): %s\n", pattern);
-    printf("Debug: Pattern (R->L): %s\n", reverse_pattern);
+    printf("Debug: Pattern: %s\n", pattern);
+    printf("Debug: Reverse Pattern: %s\n", reverse_pattern);
 
+    // Check both patterns for matches
     for (int i = 0; i < sizeof(code39_patterns) / sizeof(code39_patterns[0]); i++) {
         if (strcmp(pattern, code39_patterns[i]) == 0) {
-            printf("Debug: Matched pattern L->R\n");
+            printf("Debug: Matched pattern (L->R)\n");
             return code39_chars[i];
         }
         if (strcmp(reverse_pattern, code39_patterns[i]) == 0) {
-            printf("Debug: Matched pattern R->L\n");
+            printf("Debug: Matched pattern (R->L)\n");
             return code39_chars[i];
         }
     }
@@ -173,6 +188,9 @@ char decode_character() {
     return '?';
 }
 
+
+
+// Function to decode the entire barcode sequence
 void decode_barcode() {
     printf("Decoding barcode...\n");
     display_captured_bars();
@@ -192,16 +210,17 @@ void detect_surface_contrast_task(void *pvParameters) {
         uint32_t adc_sum = 0;
         for (int i = 0; i < NUM_SAMPLES; i++) {
             adc_sum += read_adc();
-            sleep_us(100);
+            sleep_us(50);
         }
         uint16_t adc_value = adc_sum / NUM_SAMPLES;
 
         const char* current_color = (adc_value > THRESHOLD) ? "Black" : "White";
+            uint64_t current_time = time_us_64();
 
         if (!decoding_active && strcmp(current_color, "Black") == 0) {
             decoding_active = true;
             reset_bar_data();
-            last_transition_time = time_us_64();  // Reset transition time to start fresh timing
+            last_transition_time = time_us_64();  
             printf("Starting barcode detection\n");
         }
 
@@ -236,6 +255,19 @@ void detect_surface_contrast_task(void *pvParameters) {
                 previous_color = current_color;
                 last_transition_time = current_time;
             }
+
+        }
+        // Check for extended white period to force decode
+        if (strcmp(current_color, "White") == 0) {
+            if (last_white_time == 0) {
+                last_white_time = current_time;  // Start timing white period
+            } else if (current_time - last_white_time > MAX_WHITE_TIME) {
+                printf("Detected extended white space - triggering decode.\n");
+                decode_barcode();
+                last_white_time = 0;  // Reset white timing
+            }
+        } else {
+            last_white_time = 0;  // Reset white timing if black is detected
         }
         vTaskDelay(pdMS_TO_TICKS(1));  // Small delay for next ADC reading
     }
