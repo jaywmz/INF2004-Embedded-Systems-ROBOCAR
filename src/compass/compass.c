@@ -31,10 +31,10 @@
 #define CTRL_REG5_A 0x24
 #define MR_REG_M 0x02
 
-#define MAX_PITCH 90.0f // Max pitch angle for full speed
-#define MAX_ROLL 90.0f // Max roll angle for full turn
+#define MAX_PITCH 90.0f         // Max pitch angle for full speed
+#define MAX_ROLL 90.0f          // Max roll angle for full turn
 #define MAX_DUTY_CYCLE 12500.0f // Max PWM duty cycle percentage
-#define MIN_DUTY_CYCLE 6250.5f // Minimum to ensure motor response
+#define MIN_DUTY_CYCLE 6250.5f  // Minimum to ensure motor response
 #define MAX_TURN_DUTY_CYCLE 6250.0f
 #define ALPHA 0.5 // Smoothing factor
 
@@ -44,7 +44,8 @@ uint16_t g_right_dutyCycle;
 char g_direction;
 
 // set up i2c interface
-void i2c_init_setup() {
+void i2c_init_setup()
+{
     i2c_init(i2c_default, 400 * 1000); // 400kHz
     gpio_set_function(SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(SCL_PIN, GPIO_FUNC_I2C);
@@ -53,7 +54,8 @@ void i2c_init_setup() {
 }
 
 // helper function to write to given register
-void write_register(uint8_t addr, uint8_t reg, uint8_t value) {
+void write_register(uint8_t addr, uint8_t reg, uint8_t value)
+{
     uint8_t buffer[2];
     buffer[0] = reg;
     buffer[1] = value;
@@ -61,13 +63,15 @@ void write_register(uint8_t addr, uint8_t reg, uint8_t value) {
 }
 
 // helper function to read from given register
-void read_registers(uint8_t addr, uint8_t reg, uint8_t *buffer, uint8_t len) {
+void read_registers(uint8_t addr, uint8_t reg, uint8_t *buffer, uint8_t len)
+{
     i2c_write_blocking(i2c_default, addr, &reg, 1, true); // Reg to read from
     i2c_read_blocking(i2c_default, addr, buffer, len, false);
 }
 
 // configures accelerometer by writing to the control registers
-void accel_init() {
+void accel_init()
+{
     // Enable accelerometer, 100Hz data rate, enable all axes
     write_register(ACC_ADDR, CTRL_REG1_A, 0x57);
 
@@ -76,13 +80,15 @@ void accel_init() {
 }
 
 // configures magnetometer by writing to the mode register
-void mag_init() {
+void mag_init()
+{
     // Continuous conversion mode
     write_register(MAG_ADDR, MR_REG_M, 0x00);
 }
 
 // read data from accelerometer registers
-void read_accel(int16_t *accel_data) {
+void read_accel(int16_t *accel_data)
+{
     uint8_t buffer[6];
     read_registers(ACC_ADDR, ACC_OUT_X_L | 0x80, buffer, 6);
 
@@ -108,7 +114,8 @@ void read_accel(int16_t *accel_data) {
 }
 
 // read data from magnetometer
-void read_mag(int16_t *mag_data) {
+void read_mag(int16_t *mag_data)
+{
     uint8_t buffer[6];
     read_registers(MAG_ADDR, MAG_OUT_X_H, buffer, 6);
 
@@ -118,34 +125,41 @@ void read_mag(int16_t *mag_data) {
 }
 
 void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
-                        int16_t mag_x, int16_t mag_y, int16_t mag_z, int16_t *pitch, int16_t *roll, int16_t *yaw) {
+                        int16_t mag_x, int16_t mag_y, int16_t mag_z, int16_t *pitch, int16_t *roll, int16_t *yaw)
+{
     // Calculate pitch and roll from accelerometer
-    *pitch = (int16_t)round( atan2(accel_y, sqrt(accel_x * accel_x + accel_z * accel_z)) * (180.0 / M_PI) );
-    *roll = (int16_t)round( atan2(accel_x, sqrt(accel_y * accel_y + accel_z * accel_z)) * (180.0 / M_PI) );
+    *pitch = (int16_t)round(atan2(accel_y, sqrt(accel_x * accel_x + accel_z * accel_z)) * (180.0 / M_PI));
+    *roll = (int16_t)round(atan2(accel_x, sqrt(accel_y * accel_y + accel_z * accel_z)) * (180.0 / M_PI));
 
     // Calculate yaw from magnetometer
-    *yaw = (int16_t)round( atan2(mag_y, mag_x) * (180.0 / M_PI) );
-    if (*yaw < 0) {
+    *yaw = (int16_t)round(atan2(mag_y, mag_x) * (180.0 / M_PI));
+    if (*yaw < 0)
+    {
         *yaw += 360;
     }
 
     // printf("Pitch: %d, Roll: %d, Yaw: %d\n", *pitch, *roll, *yaw);
 }
 
-void update_motor_duty(int16_t *pitch, int16_t *roll, uint16_t *prev_left_duty, uint16_t *prev_right_duty, 
-                        char *g_direction, uint16_t *g_left_dutyCycle, uint16_t *g_right_dutyCycle) {
-    if (*pitch > 10) {
+void update_motor_duty(int16_t *pitch, int16_t *roll, uint16_t *prev_left_duty, uint16_t *prev_right_duty,
+                       char *g_direction, uint16_t *g_left_dutyCycle, uint16_t *g_right_dutyCycle)
+{
+    if (*pitch > 10)
+    {
         *g_direction = 'f';
     }
-    else if (*pitch < -10) {
+    else if (*pitch < -10)
+    {
         *g_direction = 'b';
     }
-    else {
+    else
+    {
         *g_direction = 's';
     }
 
     // Pitch angle threshold of 10 degrees
-    if (abs(*pitch) > 10) {
+    if (abs(*pitch) > 10)
+    {
         // Finds the proportionately equivalent duty cycle of the given pitch
         float pitch_to_dutyCycle = ((float)abs(*pitch) / MAX_PITCH) * MAX_DUTY_CYCLE;
 
@@ -154,13 +168,15 @@ void update_motor_duty(int16_t *pitch, int16_t *roll, uint16_t *prev_left_duty, 
 
         // same 10 angle threshold for roll angle
         float turning_speed;
-        if (abs(*roll) > 10) {
+        if (abs(*roll) > 10)
+        {
             // Calculate turning_speed from roll, allowing for left and right turns
             turning_speed = (*roll / MAX_ROLL) * MAX_TURN_DUTY_CYCLE;
             // Clamp turning_speed to within [-MAX_TURN_DUTY_CYCLE, MAX_TURN_DUTY_CYCLE]
             turning_speed = fmin(fmax(turning_speed, -MAX_TURN_DUTY_CYCLE), MAX_TURN_DUTY_CYCLE);
         }
-        else {
+        else
+        {
             turning_speed = 0.0f;
         }
 
@@ -183,18 +199,21 @@ void update_motor_duty(int16_t *pitch, int16_t *roll, uint16_t *prev_left_duty, 
         *prev_left_duty = left_motor_duty;
         *prev_right_duty = right_motor_duty;
     }
-    else {
+    else
+    {
         // pitch angle does not pass threshold so give 0 dutycycle
         *g_left_dutyCycle = 0;
         *g_right_dutyCycle = 0;
     }
 }
 
-void print_controls(char *g_direction, uint16_t *g_left_dutyCycle, uint16_t *g_right_dutyCycle) {
+void print_controls(char *g_direction, uint16_t *g_left_dutyCycle, uint16_t *g_right_dutyCycle)
+{
     ("Direction: %c, L-dc: %u, R-dc: %u\n", *g_direction, *g_left_dutyCycle, *g_right_dutyCycle);
 }
 
-void read_motor_task(__unused void *params) {
+void read_motor_task(__unused void *params)
+{
     int16_t accel_data[3];
     int16_t mag_data[3];
     int16_t pitch, roll, yaw;
@@ -202,7 +221,8 @@ void read_motor_task(__unused void *params) {
     uint16_t prev_left_duty = 0;
     uint16_t prev_right_duty = 0;
 
-    while (1) {
+    while (1)
+    {
         read_accel(accel_data);
         read_mag(mag_data);
 
@@ -213,7 +233,7 @@ void read_motor_task(__unused void *params) {
         update_motor_duty(&pitch, &roll, &prev_left_duty, &prev_right_duty, &g_direction, &g_left_dutyCycle, &g_right_dutyCycle);
 
         // Print controls
-        print_controls(&g_direction, &g_left_dutyCycle, &g_right_dutyCycle);
+        // print_controls(&g_direction, &g_left_dutyCycle, &g_right_dutyCycle);
     }
 }
 
@@ -226,7 +246,8 @@ void read_motor_task(__unused void *params) {
 #define TEST_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
 #define DEBUG_printf printf
 
-typedef struct MQTT_CLIENT_T_ {
+typedef struct MQTT_CLIENT_T_
+{
     ip_addr_t remote_addr;
     mqtt_client_t *mqtt_client;
     u32_t received;
@@ -235,9 +256,11 @@ typedef struct MQTT_CLIENT_T_ {
 } MQTT_CLIENT_T;
 
 // Perform initialisation
-static MQTT_CLIENT_T *mqtt_client_init(void) {
+static MQTT_CLIENT_T *mqtt_client_init(void)
+{
     MQTT_CLIENT_T *state = calloc(1, sizeof(MQTT_CLIENT_T));
-    if (!state) {
+    if (!state)
+    {
         DEBUG_printf("failed to allocate state\n");
         return NULL;
     }
@@ -249,25 +272,32 @@ static u32_t data_in = 0;
 static u8_t buffer[1025];
 static u8_t data_len = 0;
 
-static void mqtt_pub_start_cb(void *arg, const char *topic, u32_t tot_len) {
+static void mqtt_pub_start_cb(void *arg, const char *topic, u32_t tot_len)
+{
     DEBUG_printf("mqtt_pub_start_cb: topic %s\n", topic);
 
-    if (tot_len > 1024) {
+    if (tot_len > 1024)
+    {
         DEBUG_printf("Message length exceeds buffer size, discarding");
-    } else {
+    }
+    else
+    {
         data_in = tot_len;
         data_len = 0;
     }
 }
 
 static void mqtt_pub_data_cb(void *arg, const u8_t *data, u16_t len,
-                             u8_t flags) {
-    if (data_in > 0) {
+                             u8_t flags)
+{
+    if (data_in > 0)
+    {
         data_in -= len;
         memcpy(&buffer[data_len], data, len);
         data_len += len;
 
-        if (data_in == 0) {
+        if (data_in == 0)
+        {
             buffer[data_len] = 0;
             DEBUG_printf("Message received: %s\n", &buffer);
         }
@@ -275,28 +305,35 @@ static void mqtt_pub_data_cb(void *arg, const u8_t *data, u16_t len,
 }
 
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg,
-                               mqtt_connection_status_t status) {
-    if (status != 0) {
+                               mqtt_connection_status_t status)
+{
+    if (status != 0)
+    {
         DEBUG_printf("Error during connection: err %d.\n", status);
-    } else {
+    }
+    else
+    {
         DEBUG_printf("MQTT connected.\n");
     }
 }
 
-void mqtt_pub_request_cb(void *arg, err_t err) {
+void mqtt_pub_request_cb(void *arg, err_t err)
+{
     MQTT_CLIENT_T *state = (MQTT_CLIENT_T *)arg;
     DEBUG_printf("mqtt_pub_request_cb: err %d\n", err);
     state->received++;
 }
 
-void mqtt_sub_request_cb(void *arg, err_t err) {
+void mqtt_sub_request_cb(void *arg, err_t err)
+{
     DEBUG_printf("mqtt_sub_request_cb: err %d\n", err);
 }
 
-err_t mqtt_test_publish(MQTT_CLIENT_T *state) {
+err_t mqtt_test_publish(MQTT_CLIENT_T *state)
+{
     char buffer[32] = {0};
 
-    sprintf(buffer, "D:%c,L:%d,R:%d", g_direction, g_left_dutyCycle, g_right_dutyCycle);
+    sprintf(buffer, "{D:%c,L:%d,R:%d}", g_direction, g_left_dutyCycle, g_right_dutyCycle);
 
     err_t err;
     u8_t qos = 0;
@@ -305,7 +342,8 @@ err_t mqtt_test_publish(MQTT_CLIENT_T *state) {
     err = mqtt_publish(state->mqtt_client, "pico_w/car", buffer, strlen(buffer),
                        qos, retain, mqtt_pub_request_cb, state);
     cyw43_arch_lwip_end();
-    if (err != ERR_OK) {
+    if (err != ERR_OK)
+    {
         DEBUG_printf("Publish err: %d\n", err);
     }
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -313,7 +351,8 @@ err_t mqtt_test_publish(MQTT_CLIENT_T *state) {
     return err;
 }
 
-err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
+err_t mqtt_test_connect(MQTT_CLIENT_T *state)
+{
     struct mqtt_connect_client_info_t ci;
     err_t err;
 
@@ -334,7 +373,8 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
                               MQTT_SERVER_PORT, mqtt_connection_cb, state,
                               client_info);
 
-    if (err != ERR_OK) {
+    if (err != ERR_OK)
+    {
         DEBUG_printf("mqtt_connect return %d\n", err);
     }
 
@@ -348,20 +388,24 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
 // chr_off=8 and chr_len=4 would return "5566"
 // Return number of characters put into destination
 static size_t get_mac_ascii(int idx, size_t chr_off, size_t chr_len,
-                            char *dest_in) {
+                            char *dest_in)
+{
     static const char hexchr[16] = "0123456789ABCDEF";
     uint8_t mac[6];
     char *dest = dest_in;
     assert(chr_off + chr_len <= (2 * sizeof(mac)));
     cyw43_hal_get_mac(idx, mac);
-    for (; chr_len && (chr_off >> 1) < sizeof(mac); ++chr_off, --chr_len) {
+    for (; chr_len && (chr_off >> 1) < sizeof(mac); ++chr_off, --chr_len)
+    {
         *dest++ = hexchr[mac[chr_off >> 1] >> (4 * (1 - (chr_off & 1))) & 0xf];
     }
     return dest - dest_in;
 }
 
-void mqtt_task(__unused void *params) {
-    if (cyw43_arch_init()) {
+void mqtt_task(__unused void *params)
+{
+    if (cyw43_arch_init())
+    {
         printf("failed to initialise\n");
         return;
     }
@@ -377,7 +421,8 @@ void mqtt_task(__unused void *params) {
 
     printf("Connecting to WiFi...\n");
     while (cyw43_arch_wifi_connect_timeout_ms(
-        WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA3_WPA2_AES_PSK, 30000)) {
+        WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA3_WPA2_AES_PSK, 30000))
+    {
         printf("SSID: %s\n" WIFI_SSID);
         printf("\nPW: %s\n", WIFI_PASSWORD);
         printf("failed to connect.\n");
@@ -397,12 +442,14 @@ void mqtt_task(__unused void *params) {
     state->mqtt_client = mqtt_client_new();
     state->counter = 0;
 
-    if (state->mqtt_client == NULL) {
+    if (state->mqtt_client == NULL)
+    {
         DEBUG_printf("Failed to create new mqtt client\n");
         return;
     }
 
-    while (mqtt_test_connect(state) != ERR_OK) {
+    while (mqtt_test_connect(state) != ERR_OK)
+    {
         printf("attempting to connect...... \n");
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
@@ -412,13 +459,18 @@ void mqtt_task(__unused void *params) {
     mqtt_set_inpub_callback(state->mqtt_client, mqtt_pub_start_cb,
                             mqtt_pub_data_cb, 0);
 
-    while (true) {
-        if (mqtt_client_is_connected(state->mqtt_client)) {
+    while (true)
+    {
+        if (mqtt_client_is_connected(state->mqtt_client))
+        {
             cyw43_arch_lwip_begin();
 
             mqtt_test_publish(state);
             cyw43_arch_lwip_end();
-        } else {
+            // vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        else
+        {
             // DEBUG_printf(".");
         }
     }
@@ -427,7 +479,8 @@ void mqtt_task(__unused void *params) {
 }
 
 // Main Function
-int main() {
+int main()
+{
     stdio_init_all();
     i2c_init_setup();
     accel_init();
@@ -441,7 +494,8 @@ int main() {
 
     vTaskStartScheduler();
 
-    while (1) {
+    while (1)
+    {
         tight_loop_contents();
     }
     return 0;
