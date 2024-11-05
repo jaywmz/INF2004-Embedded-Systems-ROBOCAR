@@ -6,7 +6,8 @@
 #include "pico/stdlib.h"
 #include "task.h"
 #include <stdio.h>
-
+#include "barcode.h"
+#include "linefollow.h"
 
 #include "hardware/pwm.h"
 
