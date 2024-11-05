@@ -126,7 +126,7 @@ void adjust_motor_speeds_with_pid()
     //  set_motor_speed(pwm_gpio_to_slice_num(MOTOR2_PWM_PIN), 4000);
 
     // Apply adjustments to maintain straight movement with a 250 bias on motor 2
-    motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 750);
+    motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 800);
     motor2_forward(NORMAL_DUTY_CYCLE + right_duty_adjustment); // Adding bias here
 }
 
