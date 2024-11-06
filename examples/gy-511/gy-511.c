@@ -1,4 +1,36 @@
-#include "gy-511.h"
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
+#include "pico/stdlib.h"
+#include "hardware/i2c.h"
+
+// GPIO pins for I2C
+#define SDA_PIN 4
+#define SCL_PIN 5
+// Accelerometer Address
+#define ACC_ADDR 0x19
+// Magnetometer Address
+#define MAG_ADDR 0x1E
+// Register Addresses for Accelerometer and Magnetometer
+#define ACC_OUT_X_L 0x28
+#define MAG_OUT_X_H 0x03
+#define CTRL_REG1_A 0x20
+#define CTRL_REG4_A 0x23
+#define CTRL_REG5_A 0x24
+#define MR_REG_M 0x02
+
+#define THRESHHOLD 15
+#define MAX_PITCH 90.0f // Max pitch angle for full speed
+#define MAX_ROLL 90.0f // Max roll angle for full turn
+#define MAX_SPEED 100.0f // Max speed percentage
+#define ALPHA 0.5 // Smoothing factor
+
+// #define MAX_PITCH 90.0f         // Max pitch angle for full speed
+// #define MAX_ROLL 90.0f          // Max roll angle for full turn
+// #define MAX_DUTY_CYCLE 12500.0f // Max PWM duty cycle percentage
+// #define MIN_DUTY_CYCLE 6250.5f  // Minimum to ensure motor response
+// #define MAX_TURN_DUTY_CYCLE 6250.0f
+// #define ALPHA 0.5 // Smoothing factor
 
 // set up i2c interface
 void i2c_init_setup() {
@@ -80,7 +112,7 @@ void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
     *pitch = (int16_t)round( atan2(accel_y, sqrt(accel_x * accel_x + accel_z * accel_z)) * (180.0 / M_PI) );
     *roll = (int16_t)round( atan2(accel_x, sqrt(accel_y * accel_y + accel_z * accel_z)) * (180.0 / M_PI) );
 
-    // Calculate yaw from magnetometer
+    // Tilt-compensated yaw from magnetometer
     *yaw = (int16_t)round( atan2(mag_y, mag_x) * (180.0 / M_PI) );
     if (*yaw < 0) {
         *yaw += 360;
@@ -89,66 +121,120 @@ void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
     // printf("Pitch: %d, Roll: %d, Yaw: %d\n", *pitch, *roll, *yaw);
 }
 
-void update_motor_duty(int16_t *pitch, int16_t *roll, uint16_t *prev_left_duty, uint16_t *prev_right_duty, 
-                        char *direction, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle) {
-    if (*pitch > 10) {
+// void update_motor_duty(int16_t *pitch, int16_t *roll, uint16_t *prev_left_duty, uint16_t *prev_right_duty, 
+//                         char *direction, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle) {
+//     if (*pitch > 10) {
+//         *direction = 'f';
+//     }
+//     else if (*pitch < -10) {
+//         *direction = 'b';
+//     }
+//     else {
+//         *direction = 's';
+//     }
+
+//     // Pitch angle threshold of 10 degrees
+//     if (abs(*pitch) > 10) {
+//         // Finds the proportionately equivalent duty cycle of the given pitch
+//         float pitch_to_dutyCycle = ((float)abs(*pitch) / MAX_PITCH) * MAX_DUTY_CYCLE;
+
+//         // Limits base duty cycle within min and max
+//         float base_dutyCycle = fmin(fmax(pitch_to_dutyCycle, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
+
+//         // same 10 angle threshold for roll angle
+//         float turning_speed;
+//         if (abs(*roll) > 10) {
+//             // Calculate turning_speed from roll, allowing for left and right turns
+//             turning_speed = (*roll / MAX_ROLL) * MAX_TURN_DUTY_CYCLE;
+//             // Clamp turning_speed to within [-MAX_TURN_DUTY_CYCLE, MAX_TURN_DUTY_CYCLE]
+//             turning_speed = fmin(fmax(turning_speed, -MAX_TURN_DUTY_CYCLE), MAX_TURN_DUTY_CYCLE);
+//         }
+//         else {
+//             turning_speed = 0.0f;
+//         }
+
+//         // Calculate left and right motor duties based on forward and turning speeds
+//         float left_motor_duty = base_dutyCycle + turning_speed;
+//         float right_motor_duty = base_dutyCycle - turning_speed;
+
+//         // Clamp final motor duty cycles to stay within [MIN_DUTY_CYCLE, MAX_DUTY_CYCLE]
+//         left_motor_duty = fmin(fmax(left_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
+//         right_motor_duty = fmin(fmax(right_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
+
+//         // Apply smoothing filter
+//         left_motor_duty = ALPHA * left_motor_duty + (1 - ALPHA) * *prev_left_duty;
+//         right_motor_duty = ALPHA * right_motor_duty + (1 - ALPHA) * *prev_right_duty;
+
+//         // Round to integer
+//         *left_dutyCycle = (uint16_t)round(left_motor_duty);
+//         *right_dutyCycle = (uint16_t)round(right_motor_duty);
+
+//         *prev_left_duty = left_motor_duty;
+//         *prev_right_duty = right_motor_duty;
+//     }
+//     else {
+//         // pitch angle does not pass threshold so give 0 dutycycle
+//         *left_dutyCycle = 0;
+//         *right_dutyCycle = 0;
+//     }
+// }
+
+void update_speed(int16_t *pitch, int16_t *roll, char *direction, uint8_t *speed) {
+    static uint8_t prev_speed;
+
+    // Determining direction
+    if (*pitch > THRESHHOLD && abs(*roll) < THRESHHOLD) {
         *direction = 'f';
     }
-    else if (*pitch < -10) {
+    else if (*pitch < -THRESHHOLD && abs(*roll) < THRESHHOLD) {
         *direction = 'b';
+    }
+    else if (*roll > THRESHHOLD && abs(*pitch) < THRESHHOLD) {
+        *direction = 'r';
+    }
+    else if (*roll < -THRESHHOLD && abs(*pitch) < THRESHHOLD){
+        *direction = 'l';
     }
     else {
         *direction = 's';
     }
+    
+    // Determining forward speed
+    if (abs(*pitch) > THRESHHOLD && abs(*roll) < THRESHHOLD) {
+        // find the speed proportionate to pitch angle
+        uint8_t pitch_to_speed = (round)((abs((float)*pitch) / MAX_PITCH) * MAX_SPEED);
+        
+        // Apply exponential smoothing to speed
+        *speed = ALPHA * pitch_to_speed + (1 - ALPHA) * prev_speed;
 
-    // Pitch angle threshold of 10 degrees
-    if (abs(*pitch) > 10) {
-        // Finds the proportionately equivalent duty cycle of the given pitch
-        float pitch_to_dutyCycle = ((float)abs(*pitch) / MAX_PITCH) * MAX_DUTY_CYCLE;
+        // Update previous speed value
+        prev_speed = *speed;
 
-        // Limits base duty cycle within min and max
-        float base_dutyCycle = fmin(fmax(pitch_to_dutyCycle, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
+        return;
+    }
+    // // If no change in pitch, then determine left/right speed
+    else if (abs(*roll) > THRESHHOLD && abs(*pitch) < THRESHHOLD) {
+        // find the speed proportionate to roll angle
+        uint8_t roll_to_speed = (round)((abs((float)*roll) / MAX_ROLL) * MAX_SPEED);
+        
+        // Apply exponential smoothing to speed
+        *speed = ALPHA * roll_to_speed + (1 - ALPHA) * prev_speed;
 
-        // same 10 angle threshold for roll angle
-        float turning_speed;
-        if (abs(*roll) > 10) {
-            // Calculate turning_speed from roll, allowing for left and right turns
-            turning_speed = (*roll / MAX_ROLL) * MAX_TURN_DUTY_CYCLE;
-            // Clamp turning_speed to within [-MAX_TURN_DUTY_CYCLE, MAX_TURN_DUTY_CYCLE]
-            turning_speed = fmin(fmax(turning_speed, -MAX_TURN_DUTY_CYCLE), MAX_TURN_DUTY_CYCLE);
-        }
-        else {
-            turning_speed = 0.0f;
-        }
-
-        // Calculate left and right motor duties based on forward and turning speeds
-        float left_motor_duty = base_dutyCycle + turning_speed;
-        float right_motor_duty = base_dutyCycle - turning_speed;
-
-        // Clamp final motor duty cycles to stay within [MIN_DUTY_CYCLE, MAX_DUTY_CYCLE]
-        left_motor_duty = fmin(fmax(left_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
-        right_motor_duty = fmin(fmax(right_motor_duty, MIN_DUTY_CYCLE), MAX_DUTY_CYCLE);
-
-        // Apply smoothing filter
-        left_motor_duty = ALPHA * left_motor_duty + (1 - ALPHA) * *prev_left_duty;
-        right_motor_duty = ALPHA * right_motor_duty + (1 - ALPHA) * *prev_right_duty;
-
-        // Round to integer
-        *left_dutyCycle = (uint16_t)round(left_motor_duty);
-        *right_dutyCycle = (uint16_t)round(right_motor_duty);
-
-        *prev_left_duty = left_motor_duty;
-        *prev_right_duty = right_motor_duty;
+        // Update previous speed value
+        prev_speed = *speed;
+        
+        return;
     }
     else {
-        // pitch angle does not pass threshold so give 0 dutycycle
-        *left_dutyCycle = 0;
-        *right_dutyCycle = 0;
+        // When no pitch or roll, speed will be zero
+        *speed = 0;
+
+        return;
     }
 }
 
-void print_controls(char *direction, uint16_t *left_dutyCycle, uint16_t *right_dutyCycle) {
-    printf("Direction: %c, L-dc: %u, R-dc: %u\n", *direction, *left_dutyCycle, *right_dutyCycle);
+void print_controls(char *direction, uint8_t *speed) {
+    printf("Direction: %c, Speed: %u%%\n", *direction, *speed);
 }
 
 int main() {
@@ -166,12 +252,14 @@ int main() {
     int16_t roll = 0;
     int16_t yaw = 0;
 
-    uint16_t prev_left_duty = 0;
-    uint16_t prev_right_duty = 0;
+    // uint16_t prev_left_duty = 0;
+    // uint16_t prev_right_duty = 0;
+
+    // uint16_t left_dutyCycle;
+    // uint16_t right_dutyCycle;
 
     char direction;
-    uint16_t left_dutyCycle;
-    uint16_t right_dutyCycle;
+    uint8_t speed;
 
     while (1) {
         read_accel(accel_data);
@@ -181,10 +269,13 @@ int main() {
         update_orientation(accel_data[0], accel_data[1], accel_data[2], mag_data[0], mag_data[1], mag_data[2], &pitch, &roll, &yaw);
 
         // translate pitch and roll to duty cycle for wheels
-        update_motor_duty(&pitch, &roll, &prev_left_duty, &prev_right_duty, &direction, &left_dutyCycle, &right_dutyCycle);
+        // update_motor_duty(&pitch, &roll, &prev_left_duty, &prev_right_duty, &direction, &left_dutyCycle, &right_dutyCycle);
+
+        // translate pitch and roll to percentage speed for PID
+        update_speed(&pitch, &roll, &direction, &speed); 
 
         // Print controls
-        print_controls(&direction, &left_dutyCycle, &right_dutyCycle);
+        print_controls(&direction, &speed);
 
         sleep_ms(100);
     }        
