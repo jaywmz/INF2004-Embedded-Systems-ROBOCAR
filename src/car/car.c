@@ -86,7 +86,7 @@ void move_forward_distance(float target_distance_cm)
         int right_duty_adjustment = pid_update(&pid_motor_2, right_encoder_data.pulse_count);
 
         // Apply PID adjustments to each motor, plus any necessary bias
-        motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 675);
+        motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 400);
         motor2_forward(NORMAL_DUTY_CYCLE + right_duty_adjustment); // Adjust bias if needed
 
         // Print debug information about target and actual pulse counts
@@ -136,7 +136,7 @@ void adjust_motor_speeds_with_pid()
     printf("Right duty cycle: %d\n", NORMAL_DUTY_CYCLE + right_duty_adjustment);
 
     // Apply adjustments to maintain straight movement
-    motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 800);
+    motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 525);
     motor2_forward(NORMAL_DUTY_CYCLE + right_duty_adjustment); // Adding bias here
 }
 
@@ -223,14 +223,14 @@ void vLaunch()
 // Main function for system initialization and launching tasks
 int main(void)
 {
-    stdio_init_all(); // Initialize standard I/O for debugging
+    stdio_init_all();  // Initialize standard I/O for debugging
     init_encoder();    // Initialize encoders
     init_motors();     // Initialize motors
     init_ultrasonic(); // Initialize ultrasonic sensor
 
     // Initialize PID controllers for both motors
-    pid_init(&pid_motor_1, 1.0, 0.02, 0.1, 0.0, -MAX_DUTY_CYCLE, MAX_DUTY_CYCLE); // Left motor PID
-    pid_init(&pid_motor_2, 1.0, 0.02, 0.1, 0.0, -MAX_DUTY_CYCLE, MAX_DUTY_CYCLE); // Right motor PID
+    pid_init(&pid_motor_1, 0.8, 0.02, 0.05, 0.0, -MAX_DUTY_CYCLE, MAX_DUTY_CYCLE); // Left motor PID
+    pid_init(&pid_motor_2, 0.8, 0.02, 0.05, 0.0, -MAX_DUTY_CYCLE, MAX_DUTY_CYCLE); // Right motor PID
 
     sleep_ms(1000); // Small delay to ensure system is ready
     vLaunch();      // Launch tasks and start FreeRTOS scheduler
