@@ -1,15 +1,24 @@
 #include "FreeRTOS.h"
 #include "hardware/i2c.h"
-#include "lwip/apps/mdns.h"
-#include "lwip/apps/mqtt.h"
-#include "pico/cyw43_arch.h"
-#include "pico/stdio.h"
-#include "pico/stdlib.h"
+
 #include "task.h"
 #include <math.h>
 
-#define MQTT_SERVER_IP "172.20.10.2"
-#define MQTT_SERVER_PORT 1883
+#include <string.h>
+#include <stdlib.h>
+
+#include "pico/stdio.h"
+#include "pico/stdlib.h"
+#include "pico/cyw43_arch.h"
+
+#include "lwip/apps/mdns.h"
+#include "lwip/pbuf.h"
+#include "lwip/udp.h"
+
+#define UDP_PORT 4444
+#define BEACON_MSG_LEN_MAX 127
+#define BEACON_TARGET "255.255.255.255"
+#define BEACON_INTERVAL_MS 100
 
 // == Compass Configuration ==
 
@@ -32,10 +41,10 @@
 #define MR_REG_M 0x02
 
 #define THRESHHOLD 15
-#define MAX_PITCH 90.0f // Max pitch angle for full speed
-#define MAX_ROLL 90.0f // Max roll angle for full turn
+#define MAX_PITCH 90.0f  // Max pitch angle for full speed
+#define MAX_ROLL 90.0f   // Max roll angle for full turn
 #define MAX_SPEED 100.0f // Max speed percentage
-#define ALPHA 0.5 // Smoothing factor
+#define ALPHA 0.5        // Smoothing factor
 
 // Global variables
 uint8_t g_speed;
@@ -136,31 +145,38 @@ void update_orientation(int16_t accel_x, int16_t accel_y, int16_t accel_z,
     }
 }
 
-void update_speed(int16_t *pitch, int16_t *roll, char *g_direction, uint8_t *g_speed) {
+void update_speed(int16_t *pitch, int16_t *roll, char *g_direction, uint8_t *g_speed)
+{
     static uint8_t prev_speed;
 
     // Determining direction
-    if (*pitch > THRESHHOLD && abs(*roll) < THRESHHOLD) {
+    if (*pitch > THRESHHOLD && abs(*roll) < THRESHHOLD)
+    {
         *g_direction = 'f';
     }
-    else if (*pitch < -THRESHHOLD && abs(*roll) < THRESHHOLD) {
+    else if (*pitch < -THRESHHOLD && abs(*roll) < THRESHHOLD)
+    {
         *g_direction = 'b';
     }
-    else if (*roll > THRESHHOLD && abs(*pitch) < THRESHHOLD) {
+    else if (*roll > THRESHHOLD && abs(*pitch) < THRESHHOLD)
+    {
         *g_direction = 'r';
     }
-    else if (*roll < -THRESHHOLD && abs(*pitch) < THRESHHOLD){
+    else if (*roll < -THRESHHOLD && abs(*pitch) < THRESHHOLD)
+    {
         *g_direction = 'l';
     }
-    else {
+    else
+    {
         *g_direction = 's';
     }
-    
+
     // Determining forward speed
-    if (abs(*pitch) > THRESHHOLD && abs(*roll) < THRESHHOLD) {
+    if (abs(*pitch) > THRESHHOLD && abs(*roll) < THRESHHOLD)
+    {
         // find the speed proportionate to pitch angle
         uint8_t pitch_to_speed = (round)((abs((float)*pitch) / MAX_PITCH) * MAX_SPEED);
-        
+
         // Apply exponential smoothing to speed
         *g_speed = ALPHA * pitch_to_speed + (1 - ALPHA) * prev_speed;
 
@@ -170,19 +186,21 @@ void update_speed(int16_t *pitch, int16_t *roll, char *g_direction, uint8_t *g_s
         return;
     }
     // // If no change in pitch, then determine left/right speed
-    else if (abs(*roll) > THRESHHOLD && abs(*pitch) < THRESHHOLD) {
+    else if (abs(*roll) > THRESHHOLD && abs(*pitch) < THRESHHOLD)
+    {
         // find the speed proportionate to roll angle
         uint8_t roll_to_speed = (round)((abs((float)*roll) / MAX_ROLL) * MAX_SPEED);
-        
+
         // Apply exponential smoothing to speed
         *g_speed = ALPHA * roll_to_speed + (1 - ALPHA) * prev_speed;
 
         // Update previous speed value
         prev_speed = *g_speed;
-        
+
         return;
     }
-    else {
+    else
+    {
         // When no pitch or roll, speed will be zero
         *g_speed = 0;
 
@@ -224,141 +242,6 @@ void read_motor_task(__unused void *params)
 #define TEST_TASK_PRIORITY (tskIDLE_PRIORITY + 1UL)
 #define DEBUG_printf printf
 
-typedef struct MQTT_CLIENT_T_
-{
-    ip_addr_t remote_addr;
-    mqtt_client_t *mqtt_client;
-    u32_t received;
-    u32_t counter;
-    u32_t reconnect;
-} MQTT_CLIENT_T;
-
-// Perform initialisation
-static MQTT_CLIENT_T *mqtt_client_init(void)
-{
-    MQTT_CLIENT_T *state = calloc(1, sizeof(MQTT_CLIENT_T));
-    if (!state)
-    {
-        DEBUG_printf("failed to allocate state\n");
-        return NULL;
-    }
-    state->received = 0;
-    return state;
-}
-
-static u32_t data_in = 0;
-static u8_t buffer[1025];
-static u8_t data_len = 0;
-
-static void mqtt_pub_start_cb(void *arg, const char *topic, u32_t tot_len)
-{
-    DEBUG_printf("mqtt_pub_start_cb: topic %s\n", topic);
-
-    if (tot_len > 1024)
-    {
-        DEBUG_printf("Message length exceeds buffer size, discarding");
-    }
-    else
-    {
-        data_in = tot_len;
-        data_len = 0;
-    }
-}
-
-static void mqtt_pub_data_cb(void *arg, const u8_t *data, u16_t len,
-                             u8_t flags)
-{
-    if (data_in > 0)
-    {
-        data_in -= len;
-        memcpy(&buffer[data_len], data, len);
-        data_len += len;
-
-        if (data_in == 0)
-        {
-            buffer[data_len] = 0;
-            DEBUG_printf("Message received: %s\n", &buffer);
-        }
-    }
-}
-
-static void mqtt_connection_cb(mqtt_client_t *client, void *arg,
-                               mqtt_connection_status_t status)
-{
-    if (status != 0)
-    {
-        DEBUG_printf("Error during connection: err %d.\n", status);
-    }
-    else
-    {
-        DEBUG_printf("MQTT connected.\n");
-    }
-}
-
-void mqtt_pub_request_cb(void *arg, err_t err)
-{
-    MQTT_CLIENT_T *state = (MQTT_CLIENT_T *)arg;
-    DEBUG_printf("mqtt_pub_request_cb: err %d\n", err);
-    state->received++;
-}
-
-void mqtt_sub_request_cb(void *arg, err_t err)
-{
-    DEBUG_printf("mqtt_sub_request_cb: err %d\n", err);
-}
-
-err_t mqtt_test_publish(MQTT_CLIENT_T *state)
-{
-    char buffer[32] = {0};
-
-    sprintf(buffer, "{D:%c,S:%d%%}", g_direction, g_speed);
-
-    err_t err;
-    u8_t qos = 0;
-    u8_t retain = 0;
-    cyw43_arch_lwip_begin();
-    err = mqtt_publish(state->mqtt_client, "pico_w/car", buffer, strlen(buffer),
-                       qos, retain, mqtt_pub_request_cb, state);
-    cyw43_arch_lwip_end();
-    if (err != ERR_OK)
-    {
-        DEBUG_printf("Publish err: %d\n", err);
-    }
-    vTaskDelay(pdMS_TO_TICKS(50));
-
-    return err;
-}
-
-err_t mqtt_test_connect(MQTT_CLIENT_T *state)
-{
-    struct mqtt_connect_client_info_t ci;
-    err_t err;
-
-    memset(&ci, 0, sizeof(ci));
-
-    ci.client_id = "Compass";
-    ci.client_user = NULL;
-    ci.client_pass = NULL;
-    ci.keep_alive = 60;
-    ci.will_topic = NULL;
-    ci.will_msg = NULL;
-    ci.will_retain = 0;
-    ci.will_qos = 0;
-
-    const struct mqtt_connect_client_info_t *client_info = &ci;
-
-    err = mqtt_client_connect(state->mqtt_client, &(state->remote_addr),
-                              MQTT_SERVER_PORT, mqtt_connection_cb, state,
-                              client_info);
-
-    if (err != ERR_OK)
-    {
-        DEBUG_printf("mqtt_connect return %d\n", err);
-    }
-
-    return err;
-}
-
 // Return some characters from the ascii representation of the mac address
 // e.g. 112233445566
 // chr_off is index of character in mac to start
@@ -380,7 +263,7 @@ static size_t get_mac_ascii(int idx, size_t chr_off, size_t chr_len,
     return dest - dest_in;
 }
 
-void mqtt_task(__unused void *params)
+void udp_task(__unused void *params)
 {
     if (cyw43_arch_init())
     {
@@ -414,43 +297,34 @@ void mqtt_task(__unused void *params)
     printf("\nReady, running on host %s\n",
            ip4addr_ntoa(netif_ip4_addr(netif_list)));
 
-    MQTT_CLIENT_T *state = mqtt_client_init();
-    ipaddr_aton(MQTT_SERVER_IP, &(state->remote_addr));
+    struct udp_pcb *pcb = udp_new();
 
-    state->mqtt_client = mqtt_client_new();
-    state->counter = 0;
+    ip_addr_t addr;
+    ipaddr_aton(BEACON_TARGET, &addr);
+    int counter = 0;
 
-    if (state->mqtt_client == NULL)
+    while (1)
     {
-        DEBUG_printf("Failed to create new mqtt client\n");
-        return;
-    }
-
-    while (mqtt_test_connect(state) != ERR_OK)
-    {
-        printf("attempting to connect...... \n");
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
-    absolute_time_t timeout = nil_time;
-    bool subscribed = false;
-    mqtt_set_inpub_callback(state->mqtt_client, mqtt_pub_start_cb,
-                            mqtt_pub_data_cb, 0);
-
-    while (true)
-    {
-        if (mqtt_client_is_connected(state->mqtt_client))
+        struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, BEACON_MSG_LEN_MAX + 1, PBUF_RAM);
+        char *req = (char *)p->payload;
+        memset(req, 0, BEACON_MSG_LEN_MAX + 1);
+        snprintf(req, BEACON_MSG_LEN_MAX, "%d\n", counter);
+        err_t er = udp_sendto(pcb, p, &addr, UDP_PORT);
+        pbuf_free(p);
+        if (er != ERR_OK)
         {
-            cyw43_arch_lwip_begin();
-
-            mqtt_test_publish(state);
-            cyw43_arch_lwip_end();
-            // vTaskDelay(pdMS_TO_TICKS(50));
+            printf("Failed to send UDP packet! error=%d", er);
         }
         else
         {
-            // DEBUG_printf(".");
+            printf("Sent packet %d\n", counter);
+            counter++;
         }
+
+        // if you are using pico_cyw43_arch_poll, then you must poll periodically from your
+        // main loop (not from a timer) to check for Wi-Fi driver or lwIP work that needs to be done.
+        cyw43_arch_poll();
+        vTaskDelay(pdMS_TO_TICKS(BEACON_INTERVAL_MS));
     }
 
     cyw43_arch_deinit();
@@ -467,7 +341,7 @@ int main()
     TaskHandle_t read_motor_task_handle, mqtt_task_handle;
     xTaskCreate(read_motor_task, "ReadMotorTask", configMINIMAL_STACK_SIZE,
                 NULL, TEST_TASK_PRIORITY, &read_motor_task_handle);
-    xTaskCreate(mqtt_task, "MqttTask", configMINIMAL_STACK_SIZE, NULL,
+    xTaskCreate(udp_task, "UdpTask", configMINIMAL_STACK_SIZE, NULL,
                 TEST_TASK_PRIORITY, &mqtt_task_handle);
 
     vTaskStartScheduler();
@@ -476,5 +350,6 @@ int main()
     {
         tight_loop_contents();
     }
+
     return 0;
 }
