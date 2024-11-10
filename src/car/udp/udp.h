@@ -1,5 +1,5 @@
-#ifndef PICO_MQTT_H
-#define PICO_MQTT_H
+#ifndef PICO_UDP_H
+#define PICO_UDP_H
 
 #include <stdint.h>
 
@@ -18,7 +18,7 @@ typedef struct Telemetry
     // TODO: Add telemetry data
 } Telemetry;
 
-void init_mqtt();
+void init_udp();
 void get_compass_data(Compass *compass);
 void send_telemetry(Telemetry *telemetry);
 

@@ -2,7 +2,7 @@
 #include "encoder.h"
 #include "motor.h"
 #include "ultrasonic.h"
-#include "mqtt.h"
+#include "udp.h"
 #include "pico/stdlib.h"
 #include "task.h"
 #include <stdio.h>
@@ -79,7 +79,7 @@ void vTaskCompass(__unused void *pvParameters)
     while (1)
     {
         get_compass_data(&compass);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -114,7 +114,7 @@ void vLaunch()
 int main(void)
 {
     stdio_init_all();
-    init_mqtt();
+    init_udp();
     init_motors();
     // init_encoder();
     // init_ultrasonic();
