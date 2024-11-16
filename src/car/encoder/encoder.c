@@ -7,7 +7,9 @@
 // Wheel and Encoder Measurements
 #define ENCODER_NOTCHES_PER_REV 20
 #define WHEEL_DIAMETER 0.065                                               // in meters
+#define WHEEL_DIAMETER_CM 6.5
 #define WHEEL_CIRCUMFERENCE (WHEEL_DIAMETER * 3.14159265358979323846)      // calculated as π * diameter
+#define WHEEL_CIRCUMFERENCE_CM (WHEEL_DIAMETER_CM * 3.14159265358979323846)
 #define DISTANCE_PER_NOTCH (WHEEL_CIRCUMFERENCE / ENCODER_NOTCHES_PER_REV) // in meters
 #define ENCODER_TIMEOUT_INTERVAL 1000000                                   // Timeout in microseconds (1 second)
 #define MICROSECONDS_IN_A_SECOND 1000000.0f
@@ -61,7 +63,7 @@ static float calculate_speed(uint64_t pulse_width)
     float rotations_per_second = 1.0 / rotation_time;                    // Rotations per second
 
     // Convert to linear speed (distance per second) in meters per second
-    return rotations_per_second * WHEEL_CIRCUMFERENCE;
+    return rotations_per_second * WHEEL_CIRCUMFERENCE_CM;
 }
 // NOT USED directly in car.c - This function is called within `read_encoder_data` to compute speed, but not directly in `car.c`.
 
@@ -81,13 +83,13 @@ void read_encoder_data(uint encoder_pin, EncoderData *encoder_data)
             encoder_data->pulse_width = pulse_width;
             float speed = calculate_speed(pulse_width); // Calls `calculate_speed` to get speed
             encoder_kalman_update(&encoder_data->kalman_state, speed); // Updates speed using Kalman filter
-            encoder_data->speed_m_per_s = encoder_data->kalman_state.x;
+            encoder_data->speed_cm_per_s = encoder_data->kalman_state.x;
             encoder_data->pulse_count++;
             if (encoder_pin == LEFT_ENCODER_PIN)
             {
                 // Debugging output for the left encoder (commented out)
                 // printf("Left Speed: %.2f m/s, Pulse Width: %lluus, Filtered Speed: %.2f m/s\n", speed,
-                //        pulse_width, encoder_data->speed_m_per_s);
+                //        pulse_width, encoder_data->speed_cm_per_s);
             }
             else
             {

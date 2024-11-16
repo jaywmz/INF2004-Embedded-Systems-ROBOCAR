@@ -37,15 +37,15 @@ typedef struct
     double setpoint;
     double integral;
     double prev_error;
-    double output_min;
-    double output_max;
+    int output_min;
+    int output_max;
     uint32_t last_time;
     float previous_error;
 } PIDController;
 
 void init_motors();
 void pid_init(PIDController *pid, double kp, double ki, double kd,
-              double setpoint, double output_min, double output_max);
+              double setpoint, int output_min, int output_max);
 double pid_update(PIDController *pid, double measurement);
 float pid_compute(PIDController *pid, float measurement);
 void pid_reset(PIDController *pid);

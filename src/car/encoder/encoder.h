@@ -5,8 +5,8 @@
 #include "pico/types.h"
 
 // Encoder and Motor Configuration
-#define LEFT_ENCODER_PIN 27
-#define RIGHT_ENCODER_PIN 3
+#define LEFT_ENCODER_PIN 3
+#define RIGHT_ENCODER_PIN 7
 
 typedef struct
 {
@@ -20,7 +20,7 @@ typedef struct
 // Define a data structure for encoder data
 typedef struct
 {
-    float speed_m_per_s;
+    float speed_cm_per_s;
     uint64_t pulse_width;
     int pulse_count;
     uint64_t _last_pulse_time; // Internal variable to keep track of the last pulse time

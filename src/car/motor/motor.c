@@ -11,7 +11,7 @@ static void setup_pwm(uint gpio_pin)
 {
     gpio_set_function(gpio_pin, GPIO_FUNC_PWM);
     uint slice_num = pwm_gpio_to_slice_num(gpio_pin);
-    pwm_set_clkdiv(slice_num, 100);               // Set clock divider for 1.25 MHz PWM clock
+    pwm_set_clkdiv(slice_num, 100.f);               // Set clock divider for 1.25 MHz PWM clock
     pwm_set_wrap(slice_num, 12500);               // Set wrap value for a 100 Hz PWM signal
     pwm_set_chan_level(slice_num, PWM_CHAN_A, 0); // Start with 0 duty cycle
     pwm_set_enabled(slice_num, true);
@@ -133,8 +133,8 @@ float pid_compute(PIDController *pid, float measurement)
 {
     float error = pid->setpoint - measurement;
     pid->integral += error;
-    float derivative = error - pid->previous_error;
-    pid->previous_error = error;
+    float derivative = error - pid->prev_error;
+    pid->prev_error = error;
     return (pid->kp * error) + (pid->ki * pid->integral) + (pid->kd * derivative);
 }
 // NOT USED in car.c - This function computes the PID output, but car.c uses `pid_update` instead.
@@ -162,37 +162,39 @@ void strong_start(int direction)
 // USED in car.c - This function is called in `move_forward_distance` and `adjust_motor_speeds_with_pid` to provide an initial high power start for the motors.
 
 void pid_init(PIDController *pid, double kp, double ki, double kd,
-              double setpoint, double output_min, double output_max)
+              double setpoint, int output_min, int output_max)
 {
     pid->kp = kp;
     pid->ki = ki;
     pid->kd = kd;
-    pid->setpoint = 0.0;
+    pid->setpoint = setpoint;
     pid->integral = 0.0;
     pid->prev_error = 0.0;
     pid->output_min = output_min;
     pid->output_max = output_max;
-    pid->previous_error = 0.0;
     pid->last_time = to_ms_since_boot(get_absolute_time());
 }
 // USED in car.c - This function initializes the PID controllers for both motors in `main`.
 
 double pid_update(PIDController *pid, double measurement)
 {
-    uint32_t current_time = to_ms_since_boot(get_absolute_time());
-    double dt = (current_time - pid->last_time) / 1000.0;
-
+    // Calculate delta of time
+    // uint32_t current_time = to_ms_since_boot(get_absolute_time());
+    // double dt = (current_time - pid->last_time) / 1000.0;
+    
     double error = pid->setpoint - measurement;
     double p_term = pid->kp * error;
 
-    pid->integral += error * dt;
+    // pid->integral += error * dt;
+    pid->integral += error;
     double i_term = pid->ki * pid->integral;
 
-    double derivative = (error - pid->prev_error) / dt;
+    // double derivative = (error - pid->prev_error) / dt;
+    double derivative = (error - pid->prev_error);
     double d_term = pid->kd * derivative;
 
+    // Clamp output to within limits
     double output = p_term + i_term + d_term;
-
     if (output > pid->output_max)
     {
         output = pid->output_max;
@@ -203,7 +205,7 @@ double pid_update(PIDController *pid, double measurement)
     }
 
     pid->prev_error = error;
-    pid->last_time = current_time;
+    // pid->last_time = current_time;
 
     return output;
 }

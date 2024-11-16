@@ -5,6 +5,7 @@
 #include "pico/stdlib.h"
 #include "task.h"
 #include <stdio.h>
+#include <math.h>
 
 #include "hardware/pwm.h"
 
@@ -13,7 +14,7 @@
 #endif
 
 // Global encoder data structures for left and right wheels
-EncoderData left_encoder_data, right_encoder_data;
+EncoderData motor1_encoder_data, motor2_encoder_data;
 // Kalman filter state for ultrasonic distance measurements
 KalmanState kalman_state;
 
@@ -36,13 +37,13 @@ void rotate_90_degrees(int target_pulses)
     // Initial high power burst to start the turn
     set_motor_speed(pwm_gpio_to_slice_num(MOTOR1_PWM_PIN), BURST_DUTY_CYCLE);
 
-    right_encoder_data.pulse_count = 0;
+    motor1_encoder_data.pulse_count = 0;
 
     // Monitor encoder pulses until the target is reached
-    while (right_encoder_data.pulse_count < target_pulses)
+    while (motor1_encoder_data.pulse_count < target_pulses)
     {
         // Check if we have reached the target on both encoders
-        if (right_encoder_data.pulse_count >= target_pulses)
+        if (motor1_encoder_data.pulse_count >= target_pulses)
         {
             break;
         }
@@ -68,34 +69,34 @@ void move_forward_distance(float target_distance_cm)
     int target_pulses = (int)(((target_distance_cm / 100) / DISTANCE_PER_NOTCH) + 0.5);
 
     // Initialize encoder pulse counts
-    left_encoder_data.pulse_count = 0;
-    right_encoder_data.pulse_count = 0;
+    motor2_encoder_data.pulse_count = 0;
+    motor1_encoder_data.pulse_count = 0;
 
     // Start moving forward with an initial strong start
     strong_start(GO_FORWARD);
 
-    while (left_encoder_data.pulse_count < target_pulses || right_encoder_data.pulse_count < target_pulses)
+    while (motor2_encoder_data.pulse_count < target_pulses || motor1_encoder_data.pulse_count < target_pulses)
     {
         // Calculate an average target pulse count to keep both motors aligned
-        int average_pulse_count = (left_encoder_data.pulse_count + right_encoder_data.pulse_count) / 2;
+        int average_pulse_count = (motor2_encoder_data.pulse_count + motor1_encoder_data.pulse_count) / 2;
         pid_motor_1.setpoint = average_pulse_count;
         pid_motor_2.setpoint = average_pulse_count;
 
         // Compute adjustments based on the current pulse count vs. the target
-        int left_duty_adjustment = pid_update(&pid_motor_1, left_encoder_data.pulse_count);
-        int right_duty_adjustment = pid_update(&pid_motor_2, right_encoder_data.pulse_count);
+        int motor2_dutyCycle = pid_update(&pid_motor_1, motor2_encoder_data.pulse_count);
+        int motor1_dutyCycle = pid_update(&pid_motor_2, motor1_encoder_data.pulse_count);
 
         // Apply PID adjustments to each motor, plus any necessary bias
-        motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 400);
-        motor2_forward(NORMAL_DUTY_CYCLE + right_duty_adjustment); // Adjust bias if needed
+        motor1_forward(NORMAL_DUTY_CYCLE + motor2_dutyCycle - 400);
+        motor2_forward(NORMAL_DUTY_CYCLE + motor1_dutyCycle); // Adjust bias if needed
 
         // Print debug information about target and actual pulse counts
         printf("Target pulses needed: %d\n", target_pulses);
-        printf("Left encoder data pulse count: %d\n", left_encoder_data.pulse_count);
-        printf("Right encoder data pulse count: %d\n", right_encoder_data.pulse_count);
+        printf("Left encoder data pulse count: %d\n", motor2_encoder_data.pulse_count);
+        printf("Right encoder data pulse count: %d\n", motor1_encoder_data.pulse_count);
 
         // Break if both motors have reached or exceeded the target pulses
-        if (left_encoder_data.pulse_count >= target_pulses && right_encoder_data.pulse_count >= target_pulses)
+        if (motor2_encoder_data.pulse_count >= target_pulses && motor1_encoder_data.pulse_count >= target_pulses)
         {
             break;
         }
@@ -111,44 +112,40 @@ void move_forward_distance(float target_distance_cm)
 void adjust_motor_speeds_with_pid()
 {
     // Try to implement this, should start fast then slow down (Method in motor.c)
-    static int initialized = 0; // Flag to track if strong start has been used
-    if (!initialized)
-    {
-        strong_start(GO_FORWARD); // Perform strong start if not done yet
-        initialized = 1;          // Mark as initialized to avoid repeating strong start
-    }
+    // static bool initialized = false; // Flag to track if strong start has been used
+    // if (!initialized)
+    // {
+    //     strong_start(GO_FORWARD); // Perform strong start if not done yet
+    //     initialized = true;          // Mark as initialized to avoid repeating strong start
+    // }
 
-    // Calculate an average target to keep both motors aligned
-    int average_pulse_count = (left_encoder_data.pulse_count + right_encoder_data.pulse_count) / 2;
-    pid_motor_1.setpoint = average_pulse_count;
-    pid_motor_2.setpoint = average_pulse_count;
-
-    // Print debug information about encoder pulse counts
-    printf("Left encoder data pulse count: %d\n", left_encoder_data.pulse_count);
-    printf("Right encoder data pulse count: %d\n", right_encoder_data.pulse_count);
+    // Use a set speed as setpoint for PIDs
+    const float setSpeed = 100.0; // cm/s
+    printf("motor1 encoder speed: %f, motor2 encoder speed: %f", motor1_encoder_data.speed_cm_per_s, motor2_encoder_data.speed_cm_per_s);
+    pid_motor_1.setpoint = setSpeed;
+    pid_motor_2.setpoint = setSpeed;
 
     // Compute adjustments based on the current pulse count vs. the target
-    int left_duty_adjustment = pid_update(&pid_motor_1, left_encoder_data.pulse_count);
-    int right_duty_adjustment = pid_update(&pid_motor_2, right_encoder_data.pulse_count);
+    int motor1_dutyCycle = pid_update(&pid_motor_1, motor1_encoder_data.speed_cm_per_s);
+    int motor2_dutyCycle = pid_update(&pid_motor_2, motor2_encoder_data.speed_cm_per_s);
 
-    // Print current duty cycle adjustments
-    printf("Left duty cycle: %d\n", NORMAL_DUTY_CYCLE + left_duty_adjustment);
-    printf("Right duty cycle: %d\n", NORMAL_DUTY_CYCLE + right_duty_adjustment);
+    // printf("L-epc: %d | R-epc: %d | L-dca: %d | R-dca: %d\n", left_encoder_data.pulse_count, right_encoder_data.pulse_count, left_duty_adjustment, right_duty_adjustment);
+    printf("    motor1-dc: %d | motor2-dc: %d\n", motor1_dutyCycle, motor2_dutyCycle);
 
     // Apply adjustments to maintain straight movement
-    motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 525);
-    motor2_forward(NORMAL_DUTY_CYCLE + right_duty_adjustment); // Adding bias here
+    motor1_forward(motor1_dutyCycle);
+    motor2_forward(motor2_dutyCycle); 
 }
 
 // Encoder task for reading encoder data and updating encoder structures
 void vTaskEncoder(__unused void *pvParameters)
 {
-    encoder_kalman_init(&left_encoder_data.kalman_state, 0.1, 0.1, 1.0, 0.0);
-    encoder_kalman_init(&right_encoder_data.kalman_state, 0.1, 0.1, 1.0, 0.0);
+    encoder_kalman_init(&motor2_encoder_data.kalman_state, 0.1, 0.1, 1.0, 0.0);
+    encoder_kalman_init(&motor1_encoder_data.kalman_state, 0.1, 0.1, 1.0, 0.0);
     while (1)
     {
-        read_encoder_data(LEFT_ENCODER_PIN, &left_encoder_data);
-        read_encoder_data(RIGHT_ENCODER_PIN, &right_encoder_data);
+        read_encoder_data(LEFT_ENCODER_PIN, &motor2_encoder_data);
+        read_encoder_data(RIGHT_ENCODER_PIN, &motor1_encoder_data);
     }
 }
 
@@ -156,7 +153,7 @@ void vTaskEncoder(__unused void *pvParameters)
 void vTaskMotor(__unused void *pvParameters)
 {
     int state = 0;
-    while (1)
+    while (1)   
     {
         if (PLS_STOP == 1) // If an obstacle is detected
         {
@@ -216,7 +213,7 @@ void vLaunch()
     TaskHandle_t motorTask, encoderTask, distanceTask;
     xTaskCreate(vTaskEncoder, "EncoderTask", 2048, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
-    xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
+    // xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
     vTaskStartScheduler(); // Start FreeRTOS scheduler
 }
 
@@ -229,8 +226,8 @@ int main(void)
     init_ultrasonic(); // Initialize ultrasonic sensor
 
     // Initialize PID controllers for both motors
-    pid_init(&pid_motor_1, 0.8, 0.02, 0.05, 0.0, -MAX_DUTY_CYCLE, MAX_DUTY_CYCLE); // Left motor PID
-    pid_init(&pid_motor_2, 0.8, 0.02, 0.05, 0.0, -MAX_DUTY_CYCLE, MAX_DUTY_CYCLE); // Right motor PID
+    pid_init(&pid_motor_1, 2, 1, 0.5, 0.0, 0, MAX_DUTY_CYCLE); // Left motor PID
+    pid_init(&pid_motor_2, 5, 1, 1, 0.0, 0, MAX_DUTY_CYCLE); // Right motor PID
 
     sleep_ms(1000); // Small delay to ensure system is ready
     vLaunch();      // Launch tasks and start FreeRTOS scheduler
