@@ -26,9 +26,9 @@ int PLS_STOP = 0;
 
 // Constants for movement and stopping distances
 #define STOPPING_DISTANCE 10.0 // Distance in cm to stop when obstacle detected
-#define MOVE_DISTANCE_CM 90.0  // Distance to move forward after turning
+#define MOVE_DISTANCE_CM 82.0  // Distance to move forward after turning
 // #define MOVE_TIME_MS 1000      // Time in ms to move forward after turn
-#define TARGET_PULSES 8           // Adjust based on calibration for a 90-degree turn
+#define TARGET_PULSES 21           // Adjust based on calibration for a 90-degree turn
 #define DISTANCE_PER_NOTCH 0.0102 // in meters, or 1.02 cm
 
 // Function to rotate the car 90 degrees to the right with encoder feedback
