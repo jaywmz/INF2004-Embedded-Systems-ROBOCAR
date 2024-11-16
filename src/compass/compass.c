@@ -338,7 +338,6 @@ void udp_task(__unused void *params)
         char *req = (char *)p->payload;
         memset(req, 0, BEACON_MSG_LEN_MAX + 1);
         snprintf(req, BEACON_MSG_LEN_MAX, "{d:%d,s:%d}\n", map_direction_to_number(g_direction), g_speed);
-        g_speed += 1;
         err_t er = udp_sendto(pcb, p, &addr, UDP_PORT);
         if (er != ERR_OK)
         {
