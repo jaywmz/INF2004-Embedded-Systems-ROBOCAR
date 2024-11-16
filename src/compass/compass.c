@@ -233,7 +233,7 @@ void read_motor_task(__unused void *params)
     }
 }
 
-// == MQTT Configuration ==
+// == UDP Configuration ==
 
 #ifndef RUN_FREERTOS_ON_CORE
 #define RUN_FREERTOS_ON_CORE 0
@@ -263,8 +263,27 @@ static size_t get_mac_ascii(int idx, size_t chr_off, size_t chr_len,
     return dest - dest_in;
 }
 
+// Function to map direction character to number
+int map_direction_to_number(char direction)
+{
+    switch (direction)
+    {
+    case 'f':
+        return 1; // Forward
+    case 'b':
+        return 2; // Backward
+    case 'l':
+        return 3; // Left
+    case 'r':
+        return 4; // Right
+    default:
+        return 0; // Unknown
+    }
+}
+
 void udp_task(__unused void *params)
 {
+
     if (cyw43_arch_init())
     {
         printf("failed to initialise\n");
@@ -298,34 +317,41 @@ void udp_task(__unused void *params)
            ip4addr_ntoa(netif_ip4_addr(netif_list)));
 
     struct udp_pcb *pcb = udp_new();
+    if (!pcb)
+    {
+        printf("Error creating PCB\n");
+        return;
+    }
 
     ip_addr_t addr;
     ipaddr_aton(BEACON_TARGET, &addr);
-    int counter = 0;
+
+    struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, BEACON_MSG_LEN_MAX + 1, PBUF_RAM);
+    if (!p)
+    {
+        printf("Error allocating pbuf\n");
+        return;
+    }
 
     while (1)
     {
-        struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, BEACON_MSG_LEN_MAX + 1, PBUF_RAM);
         char *req = (char *)p->payload;
         memset(req, 0, BEACON_MSG_LEN_MAX + 1);
-        snprintf(req, BEACON_MSG_LEN_MAX, "%d\n", counter);
+        snprintf(req, BEACON_MSG_LEN_MAX, "{d:%d,s:%d}\n", map_direction_to_number(g_direction), g_speed);
+        g_speed += 1;
         err_t er = udp_sendto(pcb, p, &addr, UDP_PORT);
-        pbuf_free(p);
         if (er != ERR_OK)
         {
             printf("Failed to send UDP packet! error=%d", er);
         }
         else
         {
-            printf("Sent packet %d\n", counter);
-            counter++;
+            printf("{d:%d,s:%d}\n", map_direction_to_number(g_direction), g_speed);
         }
 
-        // if you are using pico_cyw43_arch_poll, then you must poll periodically from your
-        // main loop (not from a timer) to check for Wi-Fi driver or lwIP work that needs to be done.
         cyw43_arch_poll();
-        vTaskDelay(pdMS_TO_TICKS(BEACON_INTERVAL_MS));
     }
+    pbuf_free(p);
 
     cyw43_arch_deinit();
 }
@@ -345,11 +371,6 @@ int main()
                 TEST_TASK_PRIORITY, &mqtt_task_handle);
 
     vTaskStartScheduler();
-
-    while (1)
-    {
-        tight_loop_contents();
-    }
 
     return 0;
 }
