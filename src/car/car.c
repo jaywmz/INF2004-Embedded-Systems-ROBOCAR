@@ -25,9 +25,9 @@ int PLS_STOP = 0;
 
 // Constants for movement and stopping distances
 #define STOPPING_DISTANCE 10.0 // Distance in cm to stop when obstacle detected
-#define MOVE_DISTANCE_CM 90.0  // Distance to move forward after turning
+#define MOVE_DISTANCE_CM 82.0  // Distance to move forward after turning
 // #define MOVE_TIME_MS 1000      // Time in ms to move forward after turn
-#define TARGET_PULSES 8           // Adjust based on calibration for a 90-degree turn
+#define TARGET_PULSES 21           // Adjust based on calibration for a 90-degree turn
 #define DISTANCE_PER_NOTCH 0.0102 // in meters, or 1.02 cm
 
 // Function to rotate the car 90 degrees to the right with encoder feedback
@@ -86,7 +86,7 @@ void move_forward_distance(float target_distance_cm)
         int right_duty_adjustment = pid_update(&pid_motor_2, right_encoder_data.pulse_count);
 
         // Apply PID adjustments to each motor, plus any necessary bias
-        motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 400);
+        motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 300);
         motor2_forward(NORMAL_DUTY_CYCLE + right_duty_adjustment); // Adjust bias if needed
 
         // Print debug information about target and actual pulse counts
@@ -136,7 +136,7 @@ void adjust_motor_speeds_with_pid()
     printf("Right duty cycle: %d\n", NORMAL_DUTY_CYCLE + right_duty_adjustment);
 
     // Apply adjustments to maintain straight movement
-    motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 525);
+    motor1_forward(NORMAL_DUTY_CYCLE + left_duty_adjustment - 425);
     motor2_forward(NORMAL_DUTY_CYCLE + right_duty_adjustment); // Adding bias here
 }
 
