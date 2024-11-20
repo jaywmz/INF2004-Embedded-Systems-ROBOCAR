@@ -9,55 +9,72 @@ static int duty_cycle_motor2 = 6250; // Start with a 50% duty cycle for motor 2 
 // Function to set up PWM for speed control on a given motor
 static void setup_pwm(uint gpio_pin)
 {
+    // Set up GPIO function to PWM
     gpio_set_function(gpio_pin, GPIO_FUNC_PWM);
+    
+    // Find PWM Slice connected to given GPIO pin
     uint slice_num = pwm_gpio_to_slice_num(gpio_pin);
-    pwm_set_clkdiv(slice_num, 100.f);               // Set clock divider for 1.25 MHz PWM clock
-    pwm_set_wrap(slice_num, 12500);               // Set wrap value for a 100 Hz PWM signal
-    pwm_set_chan_level(slice_num, PWM_CHAN_A, 0); // Start with 0 duty cycle
+
+    // Calculate the PWM frequency and set the PWM wrap value
+    float clock_freq = 125000000.0f;  // Default clock frequency of the Pico in Hz, 125MHz
+    float freq = 1000.0f;    // Desired frequency
+    float divider = clock_freq / (freq * 65536.0f);  // Compute clock divider
+    pwm_set_clkdiv(slice_num, divider);
+    pwm_set_wrap(slice_num, MAX_DUTY_CYCLE);
+    // pwm_set_clkdiv(slice_num, 100.f);               // Set clock divider for 1.25 MHz PWM clock
+    // pwm_set_wrap(slice_num, 12500);               // Set wrap value for a 100 Hz PWM signal
+
+    // pwm_set_chan_level(slice_num, PWM_CHAN_A, 0); // Start with 0 duty cycle
+    pwm_set_gpio_level(gpio_pin, (uint16_t)(0 * MAX_DUTY_CYCLE));
     pwm_set_enabled(slice_num, true);
 }
 // NOT USED directly in car.c - This function is used internally in `init_motors` to configure PWM for motor speed control.
 
 // Function to start a motor at the specified duty cycle
-static void start_motor(uint slice_num, int duty_cycle)
+static void start_motor(uint gpio_pin, float duty_cycle)
 {
-    pwm_set_chan_level(slice_num, PWM_CHAN_A, duty_cycle);
+    // pwm_set_chan_level(slice_num, PWM_CHAN_A, duty_cycle);
+    pwm_set_gpio_level(gpio_pin, (uint16_t)(duty_cycle * MAX_DUTY_CYCLE));
 }
 // NOT USED directly in car.c - This function is used internally in `strong_start` to start the motors with a specified duty cycle.
 
-void motor1_forward(int duty_cycle)
+void motor1_forward(float duty_cycle)
 {
     gpio_put(MOTOR1_IN1_PIN, 1);
     gpio_put(MOTOR1_IN2_PIN, 0);
-    uint slice_num_motor1 = pwm_gpio_to_slice_num(MOTOR1_PWM_PIN);
-    start_motor(slice_num_motor1, duty_cycle);
+    // uint slice_num_motor1 = pwm_gpio_to_slice_num(MOTOR1_PWM_PIN);
+    // start_motor(slice_num_motor1, duty_cycle);
+    pwm_set_gpio_level(MOTOR1_PWM_PIN, (uint16_t)(duty_cycle * MAX_DUTY_CYCLE));
 }
 // USED in car.c - This function is called in `move_forward_distance` and `adjust_motor_speeds_with_pid` to set motor 1 to move forward.
 
-void motor1_backward(int duty_cycle)
+void motor1_backward(float duty_cycle)
 {
     gpio_put(MOTOR1_IN1_PIN, 0);
     gpio_put(MOTOR1_IN2_PIN, 1);
-    uint slice_num_motor1 = pwm_gpio_to_slice_num(MOTOR1_PWM_PIN);
-    start_motor(slice_num_motor1, duty_cycle);
+    // uint slice_num_motor1 = pwm_gpio_to_slice_num(MOTOR1_PWM_PIN);
+    // start_motor(MOTOR1_PWM_PIN, duty_cycle);
+    pwm_set_gpio_level(MOTOR1_PWM_PIN, (uint16_t)(duty_cycle * MAX_DUTY_CYCLE));
 }
 // NOT USED in car.c - This function sets motor 1 to move backward but is not called directly in car.c.
 
-void motor2_forward(int duty_cycle)
+void motor2_forward(float duty_cycle)
 {
     gpio_put(MOTOR2_IN1_PIN, 1);
     gpio_put(MOTOR2_IN2_PIN, 0);
-    uint slice_num_motor2 = pwm_gpio_to_slice_num(MOTOR2_PWM_PIN);
-    start_motor(slice_num_motor2, duty_cycle);
+    // uint slice_num_motor2 = pwm_gpio_to_slice_num(MOTOR2_PWM_PIN);
+    // start_motor(MOTOR2_PWM_PIN, duty_cycle);
+    pwm_set_gpio_level(MOTOR2_PWM_PIN, (uint16_t)(duty_cycle * MAX_DUTY_CYCLE));
 }
 // USED in car.c - This function is called in `move_forward_distance` and `adjust_motor_speeds_with_pid` to set motor 2 to move forward.
 
-void motor2_backward(int duty_cycle)
+void motor2_backward(float duty_cycle)
 {
     gpio_put(MOTOR2_IN1_PIN, 0);
     gpio_put(MOTOR2_IN2_PIN, 1);
-    uint slice_num_motor2 = pwm_gpio_to_slice_num(MOTOR2_PWM_PIN);
-    start_motor(slice_num_motor2, duty_cycle);
+    // uint slice_num_motor2 = pwm_gpio_to_slice_num(MOTOR2_PWM_PIN);
+    // start_motor(MOTOR2_PWM_PIN, duty_cycle);
+    pwm_set_gpio_level(MOTOR2_PWM_PIN, (uint16_t)(duty_cycle * MAX_DUTY_CYCLE));
 }
 // NOT USED in car.c - This function sets motor 2 to move backward but is not called directly in car.c.
 
@@ -108,7 +125,7 @@ void stop_motors()
 }
 // USED in car.c - This function is called in several places in car.c to stop both motors.
 
-void set_motor_speed(uint slice_num, int duty_cycle)
+void set_motor_speed(uint slice_num, float duty_cycle)
 {
     pwm_set_chan_level(slice_num, PWM_CHAN_A, duty_cycle);
 }
@@ -161,8 +178,8 @@ void strong_start(int direction)
 }
 // USED in car.c - This function is called in `move_forward_distance` and `adjust_motor_speeds_with_pid` to provide an initial high power start for the motors.
 
-void pid_init(PIDController *pid, double kp, double ki, double kd,
-              double setpoint, int output_min, int output_max)
+void pid_init(PIDController *pid, float kp, float ki, float kd,
+              float setpoint, float output_min, float output_max)
 {
     pid->kp = kp;
     pid->ki = ki;
@@ -172,29 +189,29 @@ void pid_init(PIDController *pid, double kp, double ki, double kd,
     pid->prev_error = 0.0;
     pid->output_min = output_min;
     pid->output_max = output_max;
-    pid->last_time = to_ms_since_boot(get_absolute_time());
+    // pid->last_time = to_ms_since_boot(get_absolute_time());
 }
 // USED in car.c - This function initializes the PID controllers for both motors in `main`.
 
-double pid_update(PIDController *pid, double measurement)
+float pid_update(PIDController *pid, float measurement)
 {
     // Calculate delta of time
     // uint32_t current_time = to_ms_since_boot(get_absolute_time());
     // double dt = (current_time - pid->last_time) / 1000.0;
     
-    double error = pid->setpoint - measurement;
-    double p_term = pid->kp * error;
+    float error = pid->setpoint - measurement;
+    float p_term = pid->kp * error;
 
     // pid->integral += error * dt;
     pid->integral += error;
-    double i_term = pid->ki * pid->integral;
+    float i_term = pid->ki * pid->integral;
 
     // double derivative = (error - pid->prev_error) / dt;
-    double derivative = (error - pid->prev_error);
-    double d_term = pid->kd * derivative;
+    float derivative = (error - pid->prev_error);
+    float d_term = pid->kd * derivative;
 
     // Clamp output to within limits
-    double output = p_term + i_term + d_term;
+    float output = p_term + i_term + d_term;
     if (output > pid->output_max)
     {
         output = pid->output_max;
@@ -215,7 +232,7 @@ void pid_reset(PIDController *pid)
 {
     pid->integral = 0.0;
     pid->prev_error = 0.0;
-    pid->last_time = to_ms_since_boot(get_absolute_time());
+    // pid->last_time = to_ms_since_boot(get_absolute_time());
 }
 // NOT USED in car.c - This function resets the PID controller's integral and error terms but is not called in car.c.
 
@@ -226,7 +243,5 @@ void init_motors()
     setup_pwm(MOTOR1_PWM_PIN);
     setup_motor_pins(MOTOR2_IN1_PIN, MOTOR2_IN2_PIN);
     setup_pwm(MOTOR2_PWM_PIN);
-
-    printf("Motors are ready for control.\n");
 }
 // USED in car.c - This function is called in `main` to initialize the motors and set up PWM.

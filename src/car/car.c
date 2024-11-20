@@ -6,7 +6,6 @@
 #include "task.h"
 #include <stdio.h>
 #include <math.h>
-
 #include "hardware/pwm.h"
 
 #ifndef RUN_FREERTOS_ON_CORE
@@ -28,8 +27,6 @@ int PLS_STOP = 0;
 #define STOPPING_DISTANCE 10.0 // Distance in cm to stop when obstacle detected
 #define MOVE_DISTANCE_CM 82.0  // Distance to move forward after turning
 // #define MOVE_TIME_MS 1000      // Time in ms to move forward after turn
-#define TARGET_PULSES 21           // Adjust based on calibration for a 90-degree turn
-#define DISTANCE_PER_NOTCH 0.0102 // in meters, or 1.02 cm
 
 // Function to rotate the car 90 degrees to the right with encoder feedback
 void rotate_90_degrees(int target_pulses)
@@ -111,30 +108,15 @@ void move_forward_distance(float target_distance_cm)
 // Function to adjust motor speeds dynamically to maintain straight movement using PID
 void adjust_motor_speeds_with_pid()
 {
-    // Try to implement this, should start fast then slow down (Method in motor.c)
-    // static bool initialized = false; // Flag to track if strong start has been used
-    // if (!initialized)
-    // {
-    //     strong_start(GO_FORWARD); // Perform strong start if not done yet
-    //     initialized = true;          // Mark as initialized to avoid repeating strong start
-    // }
+    // Compute new duty cycle based on the current pulse count vs. the target
+    float motor1_dutyCycle = pid_update(&pid_motor_1, motor1_encoder_data.speed);
+    float motor2_dutyCycle = pid_update(&pid_motor_2, motor2_encoder_data.speed);
 
-    // Use a set speed as setpoint for PIDs
-    const float setSpeed = 100.0; // cm/s
-    printf("motor1 encoder speed: %f, motor2 encoder speed: %f", motor1_encoder_data.speed_cm_per_s, motor2_encoder_data.speed_cm_per_s);
-    pid_motor_1.setpoint = setSpeed;
-    pid_motor_2.setpoint = setSpeed;
+    // printf("motor1-dc: %f | motor2-dc: %f\n", motor1_dutyCycle, motor2_dutyCycle);
 
-    // Compute adjustments based on the current pulse count vs. the target
-    int motor1_dutyCycle = pid_update(&pid_motor_1, motor1_encoder_data.speed_cm_per_s);
-    int motor2_dutyCycle = pid_update(&pid_motor_2, motor2_encoder_data.speed_cm_per_s);
-
-    // printf("L-epc: %d | R-epc: %d | L-dca: %d | R-dca: %d\n", left_encoder_data.pulse_count, right_encoder_data.pulse_count, left_duty_adjustment, right_duty_adjustment);
-    printf("    motor1-dc: %d | motor2-dc: %d\n", motor1_dutyCycle, motor2_dutyCycle);
-
-    // Apply adjustments to maintain straight movement
+    // Apply new duty cycle to maintain straight movement
     motor1_forward(motor1_dutyCycle);
-    motor2_forward(motor2_dutyCycle); 
+    motor2_forward(motor2_dutyCycle);
 }
 
 // Encoder task for reading encoder data and updating encoder structures
@@ -144,8 +126,65 @@ void vTaskEncoder(__unused void *pvParameters)
     encoder_kalman_init(&motor1_encoder_data.kalman_state, 0.1, 0.1, 1.0, 0.0);
     while (1)
     {
-        read_encoder_data(LEFT_ENCODER_PIN, &motor2_encoder_data);
-        read_encoder_data(RIGHT_ENCODER_PIN, &motor1_encoder_data);
+        read_encoder_data(MOTOR2_ENCODER_PIN, &motor2_encoder_data);
+        read_encoder_data(MOTOR1_ENCODER_PIN, &motor1_encoder_data);
+    }
+}
+
+// Moving average function to get average speed
+float movingAvg(bool motor1, float newSpeed) {
+    const int len = 5;
+    static float speedsMotor1[10] = {0.0};
+    static float speedsMotor2[10] = {0.0};
+    static int index1 = 0;
+    static int index2 = 0;
+    static float sum1 = 0;
+    static float sum2 = 0;
+
+    if (motor1) {
+        sum1 = sum1 - speedsMotor1[index1] + newSpeed;
+
+        speedsMotor1[index1] = newSpeed;
+
+        index1++;
+        if (index1 >= len - 1) {index1 = 0;}
+
+        return sum1 / len;
+    }
+    else {
+        sum2 = sum2 - speedsMotor2[index2] + newSpeed;
+
+        speedsMotor2[index2] = newSpeed;
+
+        index2++;
+        if (index2 >= len - 1) {index2 = 0;}
+
+        return sum2 / len;
+    }
+}
+
+// Task to measure speed (pulses per second)
+void encoder_task(void *pvParameters) {
+    int prev_pulses_motor1 = 0, prev_pulses_motor2 = 0;
+
+    while (1) {
+        // Find number of pulses since last interval
+        int pulses_motor1 = motor1_encoder_data.pulse_count - prev_pulses_motor1;
+        int pulses_motor2 = motor2_encoder_data.pulse_count - prev_pulses_motor2;
+        prev_pulses_motor1 = motor1_encoder_data.pulse_count;
+        prev_pulses_motor2 = motor2_encoder_data.pulse_count;
+
+        // Calculate speed, since interval is 100ms, multiply 10 to get pulses per 1000ms/1s
+        float speed_motor1 = (float)pulses_motor1 * 5;
+        float speed_motor2 = (float)pulses_motor2 * 5;
+
+        // Get moving average of speed and save to encoder structs
+        motor1_encoder_data.speed = movingAvg(true, speed_motor1);
+        motor2_encoder_data.speed = movingAvg(false, speed_motor2);
+
+        printf("motor1 speed: %f | motor2 speed: %f | ", motor1_encoder_data.speed, motor2_encoder_data.speed);
+
+        vTaskDelay(pdMS_TO_TICKS(SAMPLE_INTERVAL_MS)); // Wait for next sample
     }
 }
 
@@ -170,7 +209,22 @@ void vTaskMotor(__unused void *pvParameters)
         }
         else
         {
-            adjust_motor_speeds_with_pid(); // Continue with PID adjustments
+            // Continually move car and maintain speed with PID adjustments
+            // adjust_motor_speeds_with_pid();
+
+            // Compute new duty cycle based on the current pulse count vs. the target
+            float motor1_dutyCycle = pid_update(&pid_motor_1, motor1_encoder_data.speed);
+            float motor2_dutyCycle = pid_update(&pid_motor_2, motor2_encoder_data.speed);
+            // float motor1_dutyCycle = 0.8;
+            // float motor2_dutyCycle = 0.8;
+
+            // Apply new duty cycle to maintain straight movement
+            motor1_forward(motor1_dutyCycle);
+            motor2_forward(motor2_dutyCycle);
+
+            printf("motor1-dc: %f | motor2-dc: %f\n", motor1_dutyCycle, motor2_dutyCycle);
+
+            vTaskDelay(pdMS_TO_TICKS(SAMPLE_INTERVAL_MS / 2)); // Wait for next sample
         }
     }
 }
@@ -211,7 +265,7 @@ void vTaskUltrasonic(__unused void *pvParameters)
 void vLaunch()
 {
     TaskHandle_t motorTask, encoderTask, distanceTask;
-    xTaskCreate(vTaskEncoder, "EncoderTask", 2048, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
+    xTaskCreate(encoder_task, "EncoderTask", 2048, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
     // xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
     vTaskStartScheduler(); // Start FreeRTOS scheduler
@@ -226,11 +280,16 @@ int main(void)
     init_ultrasonic(); // Initialize ultrasonic sensor
 
     // Initialize PID controllers for both motors
-    pid_init(&pid_motor_1, 2, 1, 0.5, 0.0, 0, MAX_DUTY_CYCLE); // Left motor PID
-    pid_init(&pid_motor_2, 5, 1, 1, 0.0, 0, MAX_DUTY_CYCLE); // Right motor PID
+    float kp1 = 0.006; float kp2 = 0.01;
+    float ki1 = 0.01; float ki2 = 0.01;
+    float kd1 = 0.014; float kd2 = 0.010;
+    float setpoint = 25.0;  // speed of 34 pulses per second
+    pid_init(&pid_motor_1, kp1, ki1, kd1, setpoint, 0.0, 1.0); // Left motor PID
+    pid_init(&pid_motor_2, kp2, ki2, kd2, setpoint, 0.0, 1.0); // Right motor PID
 
     sleep_ms(1000); // Small delay to ensure system is ready
     vLaunch();      // Launch tasks and start FreeRTOS scheduler
+
     while (1)
     {
         // Should never reach here

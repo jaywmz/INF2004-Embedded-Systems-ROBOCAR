@@ -18,7 +18,8 @@
 
 // Speed settings
 #define MIN_DUTY_CYCLE 2500
-#define MAX_DUTY_CYCLE 12500
+#define MAX_DUTY_CYCLE 65535
+// #define MAX_DUTY_CYCLE 12500
 #define NORMAL_DUTY_CYCLE 5000      // ~35% speed for normal operation
 #define BURST_DUTY_CYCLE 11250      // ~90% speed for initial burst
 #define HIGH_POWER_DUTY 7500        // ~60% speed for secondary phase
@@ -31,22 +32,21 @@
 // PID controller structure
 typedef struct
 {
-    double kp;
-    double ki;
-    double kd;
-    double setpoint;
-    double integral;
-    double prev_error;
-    int output_min;
-    int output_max;
-    uint32_t last_time;
+    float kp;
+    float ki;
+    float kd;
+    float setpoint;
+    float integral;
+    float prev_error;
+    float output_min;
+    float output_max;
     float previous_error;
 } PIDController;
 
 void init_motors();
-void pid_init(PIDController *pid, double kp, double ki, double kd,
-              double setpoint, int output_min, int output_max);
-double pid_update(PIDController *pid, double measurement);
+void pid_init(PIDController *pid, float kp, float ki, float kd,
+              float setpoint, float output_min, float output_max);
+float pid_update(PIDController *pid, float measurement);
 float pid_compute(PIDController *pid, float measurement);
 void pid_reset(PIDController *pid);
 
@@ -57,12 +57,12 @@ void turn_right();
 void strong_start(int direction);
 void stop_motors();
 
-void set_motor_speed(uint slice_num, int duty_cycle);
+void set_motor_speed(uint slice_num, float duty_cycle);
 void set_direction(int direction, uint in1_pin, uint in2_pin);
 
-void motor1_forward(int duty_cycle);
-void motor1_backward(int duty_cycle);
-void motor2_forward(int duty_cycle);
-void motor2_backward(int duty_cycle);
+void motor1_forward(float duty_cycle);
+void motor1_backward(float duty_cycle);
+void motor2_forward(float duty_cycle);
+void motor2_backward(float duty_cycle);
 
 #endif // PICO_MOTOR_H
