@@ -208,11 +208,7 @@ void vTaskCompass(__unused void *pvParameters)
     while (1)
     {
         get_compass_data(&compass);
-<<<<<<< HEAD
         // vTaskDelay(pdMS_TO_TICKS(100));
-=======
-        vTaskDelay(pdMS_TO_TICKS(50));
->>>>>>> 96ef0b1e11501248b69ba18a219342d16f42fffe
     }
 }
 
