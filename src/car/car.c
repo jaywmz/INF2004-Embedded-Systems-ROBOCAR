@@ -121,7 +121,7 @@ float movingAvg(bool motor1, float newSpeed)
 }
 
 // Task to measure speed (pulses per second)
-void encoder_task(void *pvParameters)
+void vTaskEncoder(void *pvParameters)
 {
     int prev_pulses_motor1 = 0, prev_pulses_motor2 = 0;
 
@@ -133,7 +133,7 @@ void encoder_task(void *pvParameters)
         prev_pulses_motor1 = motor1_encoder_data.pulse_count;
         prev_pulses_motor2 = motor2_encoder_data.pulse_count;
 
-        // Calculate speed, since interval is 100ms, multiply 10 to get pulses per 1000ms/1s
+        // Calculate speed, since interval is 100ms, multiply 10 to get pulses per second
         float speed_motor1 = (float)pulses_motor1 * 10;
         float speed_motor2 = (float)pulses_motor2 * 10;
 
@@ -200,7 +200,7 @@ void vTaskMotor(__unused void *pvParameters)
             printf("Invalid direction\n");
             stop_motors();
         }
-        vTaskDelay(pdMS_TO_TICKS(SAMPLE_INTERVAL_MS)); // Wait for next sample
+        // vTaskDelay(pdMS_TO_TICKS(SAMPLE_INTERVAL_MS)); // Wait for next sample
     }
 }
 
@@ -209,7 +209,7 @@ void vTaskCompass(__unused void *pvParameters)
     while (1)
     {
         get_compass_data(&compass);
-        vTaskDelay(pdMS_TO_TICKS(100));
+        // vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -238,7 +238,7 @@ void vTaskUltrasonic(__unused void *pvParameters)
         {
             PLS_STOP = 0;
         }
-        vTaskDelay(pdMS_TO_TICKS(50)); // Small delay for next measurement
+        // vTaskDelay(pdMS_TO_TICKS(50)); // Small delay for next measurement
     }
 }
 
@@ -247,8 +247,8 @@ void vLaunch()
 {
     TaskHandle_t motorTask, compassTask, encoderTask, distanceTask, dashboardTask;
     xTaskCreate(vTaskCompass, "CompassTask", 2048, NULL, tskIDLE_PRIORITY + 1UL, &compassTask);
-    xTaskCreate(encoder_task, "EncoderTask", 2048, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
+    xTaskCreate(vTaskEncoder, "EncoderTask", 2048, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
     xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
     vTaskStartScheduler();
 }

@@ -45,7 +45,7 @@ extern EncoderData motor2_encoder_data;
 void init_encoder(void);                                             // Function to initialize encoder settings
 void read_encoder_data(uint encoder_pin, EncoderData *encoder_data); // Function to read encoder data
 
-void encoder_task(void *pvParameters);
+void vTaskEncoder(void *pvParameters);
 // void encoder_isr_motor1(uint gpio, uint32_t events);
 // void encoder_isr_motor2(uint gpio, uint32_t events);
 void shared_encoder_isr(uint gpio, uint32_t events);
