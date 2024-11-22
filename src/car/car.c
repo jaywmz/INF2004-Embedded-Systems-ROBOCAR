@@ -242,10 +242,6 @@ void vTaskUltrasonic(__unused void *pvParameters)
     }
 }
 
-void vTaskDashboard() {
-    
-}
-
 // Function to launch all tasks and start the FreeRTOS scheduler
 void vLaunch()
 {
@@ -254,7 +250,6 @@ void vLaunch()
     xTaskCreate(encoder_task, "EncoderTask", 2048, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
     xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
-    xTaskCreate(vTaskDashboard, "DashboardTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &dashboardTask);
     vTaskStartScheduler();
 }
 
