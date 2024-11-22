@@ -12,12 +12,16 @@
 
 static struct udp_pcb *udp_server_pcb;
 
+static int g_direction = 0;
+static int g_speed = 0;
+
 static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
 {
     if (p != NULL)
     {
-        printf("Received packet from %s:%d\n", ipaddr_ntoa(addr), port);
-        printf("Data: %.*s\n", p->len, (char *)p->payload);
+        // printf("Received packet from %s:%d\n", ipaddr_ntoa(addr), port);
+        sscanf((char *)p->payload, "{d:%d,s:%d}", &g_direction, &g_speed);
+        // printf("Data: %.*s\n", p->len, (char *)p->payload);
         pbuf_free(p);
     }
 }
@@ -67,6 +71,7 @@ void init_udp()
 void get_compass_data(Compass *compass)
 {
     cyw43_arch_poll();
+    printf("{d:%d,s:%d}\n", g_direction, g_speed);
     compass->p = 0;
     compass->r = 0;
     compass->y = 0;

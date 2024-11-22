@@ -3,6 +3,10 @@ cmake_minimum_required(VERSION 3.13)
 set(WIFI_SSID "zxcvf")
 set(WIFI_PASSWORD "12345678")
 
+set(COMPASS_MDNS "PicoW1D58.local") # Leo's Pico
+set(CAR_MDNS)
+set(DASHBOARD_MDNS "PicoW5725.local") # Elroy's Pico
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

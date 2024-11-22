@@ -4,6 +4,7 @@ add_executable(compass
 target_compile_definitions(compass PRIVATE
     WIFI_SSID=\"${WIFI_SSID}\"
     WIFI_PASSWORD=\"${WIFI_PASSWORD}\"
+    DASHBOARD_MDNS=\"${DASHBOARD_MDNS}\"
     NO_SYS=1 # don't want NO_SYS (generally this would be in your lwipopts.h)
 )
 target_include_directories(compass PRIVATE

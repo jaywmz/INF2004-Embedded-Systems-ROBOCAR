@@ -19,6 +19,7 @@ typedef struct Telemetry
 } Telemetry;
 
 void init_udp();
+void poll_wifi();
 void get_compass_data(Compass *compass);
 void send_telemetry(Telemetry *telemetry);
 

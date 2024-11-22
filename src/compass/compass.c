@@ -300,8 +300,10 @@ void udp_task(__unused void *params)
     netif_set_hostname(&cyw43_state.netif[CYW43_ITF_STA], hostname);
 
     printf("Connecting to WiFi...\n");
+    // while (cyw43_arch_wifi_connect_timeout_ms(
+    //     WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA3_WPA2_AES_PSK, 30000))
     while (cyw43_arch_wifi_connect_timeout_ms(
-        WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA3_WPA2_AES_PSK, 30000))
+        "embedded", "wifiisass", CYW43_AUTH_WPA3_WPA2_AES_PSK, 30000))
     {
         printf("SSID: %s\n" WIFI_SSID);
         printf("\nPW: %s\n", WIFI_PASSWORD);
