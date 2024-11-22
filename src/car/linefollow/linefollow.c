@@ -8,10 +8,10 @@
 #define IR_SENSOR_PIN 26  // GPIO 26 is connected to the ADC input
 
 // Threshold to detect black vs. white
-#define THRESHOLD 3000  // Adjust based on calibration
+#define THRESHOLD 2000  // Adjust based on calibration
 
 // Number of samples for averaging
-#define NUM_SAMPLES 20 // Number of samples to average
+#define NUM_SAMPLES 5 // Number of samples to average
 
 // Function to read a single ADC value
 uint16_t read_adc() {
@@ -65,7 +65,7 @@ int main() {
         follow_line();
 
         // Small delay before the next iteration
-        sleep_us(1000);  // Short delay for better responsiveness
+        sleep_us(500);  // Short delay for better responsiveness
     }
 
     return 0;

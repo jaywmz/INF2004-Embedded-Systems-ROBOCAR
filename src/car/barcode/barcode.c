@@ -9,10 +9,12 @@
 #define IR_SENSOR_PIN 26  // GPIO 26 is connected to the ADC input
 
 // Thresholds and parameters
-#define THRESHOLD 3000           // Threshold to distinguish between black and white (above = Black) (below = White)
+#define THRESHOLD 2000           // Threshold to distinguish between black and white
 #define NUM_SAMPLES 5            // Number of samples to average
 #define MAX_BARS 29              // Number of bars in Code 39 (start, character, stop)
-#define END_BAR_SPACE_THRESHOLD 5000000  // Threshold for detecting end-of-barcode space
+#define END_BAR_SPACE_THRESHOLD 3000000  // Threshold for detecting end-of-barcode space
+volatile uint64_t last_white_time = 0;       // Time when last white surface was detected
+#define MAX_WHITE_TIME 3000000   // Maximum time to stay on white before forcing a decode
 #define NOISE_THRESHOLD 5000     // Minimum pulse width to consider as valid bar
 #define DEBOUNCE_DELAY 5000      // Minimum delay between transitions in microseconds
 
@@ -66,38 +68,37 @@ void reset_bar_data() {
 // Function to display captured bars for debugging
 void display_captured_bars() {
     printf("Captured Bar Widths (during decoding):\n");
-    for (int i = 0; i < MAX_BARS; i++) {
+    for (int i = 0; i < bar_count; i++) {
         printf("Bar #%d: Width = %llu, Color = %s\n", i, bar_widths[i], bar_colors[i]);
     }
 }
 
 // Function to decode a single character from the stored bar widths and colors
 char decode_character() {
+    // Calculate max width only for captured bars to avoid empty entries
     uint64_t threshold = max_width / 3;
     printf("Debug: Max Width = %llu, Threshold = %llu\n", max_width, threshold);
 
-    // Construct both patterns (left-to-right and right-to-left)
-    char pattern[MAX_BARS + 1];
-    char reverse_pattern[MAX_BARS + 1];
-    
-    for (int i = 0; i < MAX_BARS; i++) {
-        pattern[i] = classify_bar_width(bar_widths[i], max_width);
-        reverse_pattern[MAX_BARS - i - 1] = pattern[i];  // Reverse pattern
-    }
-    pattern[MAX_BARS] = '\0';
-    reverse_pattern[MAX_BARS] = '\0';
+    // Construct the pattern and reverse pattern based on captured data
+    char pattern[MAX_BARS + 1] = {0};
+    char reverse_pattern[MAX_BARS + 1] = {0};
 
-    printf("Debug: Pattern (L->R): %s\n", pattern);
-    printf("Debug: Pattern (R->L): %s\n", reverse_pattern);
+    for (int i = 0; i < bar_count; i++) {
+        pattern[i] = classify_bar_width(bar_widths[i], max_width);
+        reverse_pattern[bar_count - i - 1] = pattern[i];  // Reverse the pattern
+    }
+
+    printf("Debug: Pattern: %s\n", pattern);
+    printf("Debug: Reverse Pattern: %s\n", reverse_pattern);
 
     // Check both patterns for matches
     for (int i = 0; i < sizeof(code39_patterns) / sizeof(code39_patterns[0]); i++) {
         if (strcmp(pattern, code39_patterns[i]) == 0) {
-            printf("Debug: Matched pattern L->R\n");
+            printf("Debug: Matched pattern (L->R)\n");
             return code39_chars[i];
         }
         if (strcmp(reverse_pattern, code39_patterns[i]) == 0) {
-            printf("Debug: Matched pattern R->L\n");
+            printf("Debug: Matched pattern (R->L)\n");
             return code39_chars[i];
         }
     }
@@ -108,7 +109,7 @@ char decode_character() {
 // Function to decode the entire barcode sequence
 void decode_barcode() {
     printf("Decoding barcode...\n");
-    display_captured_bars();  // Display the captured bars for debugging
+    display_captured_bars();
     char decoded_char = decode_character();
     printf("Decoded Character: %c\n", decoded_char);
 
@@ -127,12 +128,13 @@ void detect_surface_contrast() {
 
     // Determine the current surface color
     const char* current_color = (adc_value > THRESHOLD) ? "Black" : "White";
+    uint64_t current_time = time_us_64();
 
     // Start decoding only upon detecting the first black bar
     if (!decoding_active && strcmp(current_color, "Black") == 0) {
         decoding_active = true;
         reset_bar_data();
-        last_transition_time = time_us_64();  // Reset transition time to start fresh timing
+        last_transition_time = current_time;  // Reset transition time to start fresh timing
         printf("Starting barcode detection\n");
     }
 
@@ -144,14 +146,12 @@ void detect_surface_contrast() {
     // Process bar widths when decoding is active and first black has been detected
     if (decoding_active && initial_black_detected) {
         if (strcmp(current_color, previous_color) != 0) {  // Detect color transition
-            uint64_t current_time = time_us_64();
             uint64_t pulse_duration_us = current_time - last_transition_time;
 
             // Only store valid bar if it exceeds noise threshold and debounce delay
             if (pulse_duration_us > NOISE_THRESHOLD + DEBOUNCE_DELAY && bar_count < MAX_BARS) {
                 bar_widths[bar_count] = pulse_duration_us;
                 bar_colors[bar_count] = previous_color;
-
                 printf("Captured Bar Color: %s\n", previous_color);
                 printf("Captured bar #%d: Width = %llu us\n", bar_count, pulse_duration_us);
 
@@ -167,15 +167,22 @@ void detect_surface_contrast() {
             if (bar_count == MAX_BARS) {
                 decode_barcode();
             }
-             // Check for end-of-barcode signal based on a long white space
-            if (strcmp(current_color, "White") == 0 && pulse_duration_us > END_BAR_SPACE_THRESHOLD) {
-                printf("Debug: Detected end-of-barcode signal\n");
-                decode_barcode();  // Trigger decoding for the accumulated bars
-            }
-
 
             previous_color = current_color;
             last_transition_time = current_time;
+        }
+
+        // Check for extended white period to force decode
+        if (strcmp(current_color, "White") == 0) {
+            if (last_white_time == 0) {
+                last_white_time = current_time;  // Start timing white period
+            } else if (current_time - last_white_time > MAX_WHITE_TIME) {
+                printf("Detected extended white space - triggering decode.\n");
+                decode_barcode();
+                last_white_time = 0;  // Reset white timing
+            }
+        } else {
+            last_white_time = 0;  // Reset white timing if black is detected
         }
     }
 }
@@ -190,7 +197,7 @@ int main() {
 
     while (1) {
         detect_surface_contrast();
-        sleep_us(1000);
+        sleep_us(100);
     }
 
     return 0;

@@ -12,7 +12,6 @@ target_include_directories(compass PRIVATE
 target_link_libraries(compass
     pico_cyw43_arch_lwip_threadsafe_background
     pico_lwip_mdns
-    pico_lwip_mqtt
     pico_binary_info
     hardware_i2c
     pico_stdlib
