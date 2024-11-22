@@ -27,7 +27,8 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, cons
 {
     if (p != NULL)
     {
-        sscanf((char *)p->payload, "{d:%d,s:%d}", &g_direction, &g_speed);
+        // sscanf((char *)p->payload, "{d:%d,s:%d}", &g_direction, &g_speed);
+        printf("Received: %s\n", (char *)p->payload);
         pbuf_free(p);
     }
 }
@@ -78,11 +79,11 @@ void init_udp()
 int main(void)
 {
     stdio_init_all(); // Initialize standard I/O for debugging
-
+    init_udp();
     while (1)
     {
-        printf("Hello, world!\n");
-        tight_loop_contents();
+        // printf("Hello, world!\n");
+        // tight_loop_contents();
     }
 
     return 0;
