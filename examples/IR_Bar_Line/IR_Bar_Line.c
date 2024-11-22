@@ -26,8 +26,8 @@
 #define LINE_SENSOR_PIN 27      // GPIO 27 connected to ADC input 1 (Line Following)
 
 // Thresholds
-#define BARCODE_THRESHOLD 2480  // Threshold for barcode detection
-#define LINE_THRESHOLD 2480     // Threshold for line-following sensor
+#define BARCODE_THRESHOLD 1800  // Threshold for barcode detection
+#define LINE_THRESHOLD 1800     // Threshold for line-following sensor
 
 // Barcode Detection Settings
 #define NUM_SAMPLES 2
@@ -134,12 +134,14 @@ void set_motor_speed(uint32_t gpio, float speed, bool is_left)
 
 void move_forward(float speed)
 {
+    printf("Moving forward with speed: %f\n", speed);
     gpio_put(L_MOTOR_DIR_PIN1, 1);
     gpio_put(L_MOTOR_DIR_PIN2, 0);
     gpio_put(R_MOTOR_DIR_PIN1, 1);
     gpio_put(R_MOTOR_DIR_PIN2, 0);
     set_motor_speed(L_MOTOR_PWM_PIN, speed, true);
-    set_motor_speed(R_MOTOR_PWM_PIN, speed * 0.95, false); // Slight adjustment for balance
+    set_motor_speed(R_MOTOR_PWM_PIN, speed, true);
+    //set_motor_speed(R_MOTOR_PWM_PIN, speed * 0.95, false); // Slight adjustment for balance
 }
 
 void turn_left(float speed)
@@ -166,6 +168,7 @@ void turn_right(float speed)
 
 void stop_motors()
 {
+    printf("Stopping motors\n");
     set_motor_speed(L_MOTOR_PWM_PIN, 0.0, true);
     set_motor_speed(R_MOTOR_PWM_PIN, 0.0, false);
 }
@@ -436,103 +439,104 @@ void detect_surface_contrast_task(void *pvParameters)
     }
 }
 
-// Line-Following Task
+uint16_t read_adc_avg(uint8_t input, uint8_t num_samples)
+{
+    uint32_t sum = 0;
+
+    // Read multiple samples and sum them
+    for (uint8_t i = 0; i < num_samples; i++)
+    {
+        adc_select_input(input);
+        sum += adc_read();
+        sleep_us(50); // Small delay between samples for stability
+    }
+
+    // Return the average
+    return (uint16_t)(sum / num_samples);
+}
+
 void line_following_task(void *pvParameters)
 {
+    enum { ON_LINE, SEARCHING } robot_state = ON_LINE;
     adc_gpio_init(LINE_SENSOR_PIN); // Initialize ADC pin for line sensor
+
+    // Define the number of samples to average
+    const uint8_t num_samples = 10;
+
+    // Start moving forward initially
+    move_forward(0.5); // Set initial speed to 50%
 
     while (1)
     {
         // Acquire ADC mutex
         xSemaphoreTake(xAdcMutex, portMAX_DELAY);
 
-        uint16_t adc_value = read_adc(1); // Read from ADC input 1 (Pin 27)
+        // Get averaged ADC value
+        uint16_t adc_value = read_adc_avg(1, num_samples); // Read from ADC input 1 (Pin 27)
 
         // Release ADC mutex
         xSemaphoreGive(xAdcMutex);
 
-        printf("[Line Following: Line Sensor ADC Value: %d\n", adc_value);
+        printf("[Line Following: Averaged ADC Value: %d]\n", adc_value);
 
         if (adc_value > LINE_THRESHOLD)
         {
             // Black line detected
+            if (robot_state == SEARCHING)
+            {
+                printf("Black line found. Resuming normal line-following.\n");
+            }
+
             // Move forward at normal speed
             move_forward(0.5); // 50% speed
+            robot_state = ON_LINE;
         }
         else
         {
             // White surface detected
-            // Stop motors
+            if (robot_state == ON_LINE)
+            {
+                printf("Line lost. Entering search mode.\n");
+                robot_state = SEARCHING;
+            }
+
+            // Search for the black line by turning alternately
+            static bool turn_left_first = true; // Alternate between left and right turns
+
+            if (turn_left_first)
+            {
+                printf("Searching: Turning left.\n");
+                turn_left(0.3); // Turn left slightly
+                vTaskDelay(pdMS_TO_TICKS(200)); // Small turn duration
+            }
+            else
+            {
+                printf("Searching: Turning right.\n");
+                turn_right(0.3); // Turn right slightly
+                vTaskDelay(pdMS_TO_TICKS(200)); // Small turn duration
+            }
+
+            // Alternate direction for the next search attempt
+            turn_left_first = !turn_left_first;
+
+            // Stop after each adjustment to allow sensor re-check
             stop_motors();
+            vTaskDelay(pdMS_TO_TICKS(100)); // Short delay before re-checking sensor
 
-            // Turn left slightly
-            turn_left(0.3); // 30% speed
-            vTaskDelay(pdMS_TO_TICKS(200)); // Turn for 200 ms
-
-            // Acquire ADC mutex
+            // Re-check sensor value after adjustment
             xSemaphoreTake(xAdcMutex, portMAX_DELAY);
-
-            adc_value = read_adc(1); // Read from ADC input 1 (Pin 27)
-
-            // Release ADC mutex
+            adc_value = read_adc_avg(1, num_samples); // Read from ADC input 1 (Pin 27)
             xSemaphoreGive(xAdcMutex);
 
             if (adc_value > LINE_THRESHOLD)
             {
-                // Line found, move forward
-                move_forward(0.5);
-            }
-            else
-            {
-                // Turn right slightly
-                turn_right(0.3);
-                vTaskDelay(pdMS_TO_TICKS(400)); // Turn for 400 ms (double time to compensate)
-
-                // Acquire ADC mutex
-                xSemaphoreTake(xAdcMutex, portMAX_DELAY);
-
-                adc_value = read_adc(1); // Read from ADC input 1 (Pin 27)
-
-                // Release ADC mutex
-                xSemaphoreGive(xAdcMutex);
-
-                if (adc_value > LINE_THRESHOLD)
-                {
-                    // Line found, move forward
-                    move_forward(0.5);
-                }
-                else
-                {
-                    // Stop motors
-                    stop_motors();
-                }
+                // Black line re-detected
+                printf("Black line re-detected during search.\n");
+                move_forward(0.5); // Resume forward motion
+                robot_state = ON_LINE;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(100)); // Adjust delay as needed
-    }
-}
 
-// Main Function
-int main()
-{
-    stdio_init_all();
-    init_motor_pins();
-    setup_pwm(L_MOTOR_PWM_PIN, R_MOTOR_PWM_PIN);
-
-    // Initialize ADC
-    adc_init();
-
-    // Create ADC mutex
-    xAdcMutex = xSemaphoreCreateMutex();
-
-    TaskHandle_t detect_surface_contrast_handle, line_following_handle;
-
-    xTaskCreate(detect_surface_contrast_task, "Barcode Detection Task", 2048, NULL, 1, &detect_surface_contrast_handle);
-    xTaskCreate(line_following_task, "Line Following Task", 1024, NULL, 1, &line_following_handle);
-
-    vTaskStartScheduler();
-    while (true)
-    {
-        // Should never reach here
+        vTaskDelay(pdMS_TO_TICKS(50)); // Small delay for stability
     }
 }
