@@ -1,4 +1,6 @@
-#include "udp.h"
+#include <stdio.h>
+#include <math.h>
+
 #include <string.h>
 #include <stdlib.h>
 
@@ -25,9 +27,7 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, cons
 {
     if (p != NULL)
     {
-        // printf("Received packet from %s:%d\n", ipaddr_ntoa(addr), port);
         sscanf((char *)p->payload, "{d:%d,s:%d}", &g_direction, &g_speed);
-        // printf("Data: %.*s\n", p->len, (char *)p->payload);
         pbuf_free(p);
     }
 }
@@ -50,26 +50,6 @@ static void udp_server_init()
 
     udp_recv(udp_server_pcb, udp_server_recv, NULL);
     printf("UDP server listening on port %d\n", UDP_PORT);
-
-    g_sender_pcb = udp_new();
-    printf("Created Sender UDP connection\n");
-
-    if (!g_sender_pcb)
-    {
-        printf("Error creating Sender PCB\n");
-        return;
-    }
-    printf("Created Sender PCB\n");
-
-    ipaddr_aton(BEACON_TARGET, &g_addr);
-
-    g_pbuf = pbuf_alloc(PBUF_TRANSPORT, BEACON_MSG_LEN_MAX + 1, PBUF_RAM);
-    if (!g_pbuf)
-    {
-        printf("Error allocating pbuf\n");
-        return;
-    }
-    printf("Allocated pbuf\n");
 }
 
 void init_udp()
@@ -94,28 +74,16 @@ void init_udp()
     udp_server_init();
 }
 
-void get_compass_data(Compass *compass)
+// Main function for system initialization and launching tasks
+int main(void)
 {
-    cyw43_arch_poll();
-    printf("{d:%d,s:%d}\n", g_direction, g_speed);
-    compass->direction = g_direction;
-    compass->speed = g_speed;
-}
+    stdio_init_all(); // Initialize standard I/O for debugging
 
-void send_telemetry(Telemetry *telemetry)
-{
-    char *req = (char *)g_pbuf->payload;
-    memset(req, 0, BEACON_MSG_LEN_MAX + 1);
-    snprintf(req, BEACON_MSG_LEN_MAX, "{some_test_message}\n");
-    err_t er = udp_sendto(g_sender_pcb, g_pbuf, &g_addr, UDP_PORT);
-    if (er != ERR_OK)
+    while (1)
     {
-        printf("Failed to send UDP packet! error=%d", er);
-    }
-    else
-    {
-        printf("{some_test_message}\n");
+        printf("Hello, world!\n");
+        tight_loop_contents();
     }
 
-    cyw43_arch_poll();
+    return 0;
 }
