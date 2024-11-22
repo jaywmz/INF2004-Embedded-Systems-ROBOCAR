@@ -1,5 +1,5 @@
 add_executable(dashboard
-        dashboard
+        dashboard.c
 )
 target_compile_definitions(dashboard PRIVATE
         WIFI_SSID=\"${WIFI_SSID}\"
