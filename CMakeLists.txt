@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.13)
 
-set(WIFI_SSID "zxcvf")
-set(WIFI_PASSWORD "12345678")
+# set(WIFI_SSID "zxcvf")
+# set(WIFI_PASSWORD "12345678")
+
+set(WIFI_SSID "LeoHotspot")
+set(WIFI_PASSWORD "urwelcome@123")
 
 set(COMPASS_MDNS "PicoW1D58.local") # Leo's Pico
 set(CAR_MDNS)

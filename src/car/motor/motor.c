@@ -3,8 +3,8 @@
 #include <stdio.h>
 
 // Variables to control motor speed
-static int duty_cycle_motor1 = 6250; // Start with a 50% duty cycle for motor 1 (range: 0-12500)
-static int duty_cycle_motor2 = 6250; // Start with a 50% duty cycle for motor 2 (range: 0-12500)
+// static int duty_cycle_motor1 = 6250; // Start with a 50% duty cycle for motor 1 (range: 0-12500)
+// static int duty_cycle_motor2 = 6250; // Start with a 50% duty cycle for motor 2 (range: 0-12500)
 
 // Function to set up PWM for speed control on a given motor
 static void setup_pwm(uint gpio_pin)
@@ -88,40 +88,42 @@ static void setup_motor_pins(uint in1_pin, uint in2_pin)
 }
 // NOT USED directly in car.c - This function is called within `init_motors` to set up the direction control pins for each motor.
 
-void move_forward()
+void move_forward(float duty_cycle_motor1, float duty_cycle_motor2)
 {
     motor1_forward(duty_cycle_motor1);
     motor2_forward(duty_cycle_motor2);
 }
 // NOT USED in car.c - This function moves both motors forward, but car.c calls `motor1_forward` and `motor2_forward` directly instead.
 
-void move_backward()
+void move_backward(float duty_cycle_motor1, float duty_cycle_motor2)
 {
     motor1_backward(duty_cycle_motor1);
     motor2_backward(duty_cycle_motor2);
 }
 // NOT USED in car.c - This function moves both motors backward but is not called in car.c.
 
-void turn_left()
+void turn_right(float duty_cycle_motor1, float duty_cycle_motor2)
 {
-    motor1_forward(12000);
-    motor2_backward(12000);
+    motor1_forward(duty_cycle_motor1);
+    motor2_backward(duty_cycle_motor2);
 }
 // NOT USED in car.c - This function makes the car turn left by setting motor 1 to forward and motor 2 to backward.
 
-void turn_right()
+void turn_left(float duty_cycle_motor1, float duty_cycle_motor2)
 {
-    motor1_backward(12000);
-    motor2_forward(12000);
+    motor1_backward(duty_cycle_motor1);
+    motor2_forward(duty_cycle_motor2);
 }
 // NOT USED in car.c - This function makes the car turn right by setting motor 1 to backward and motor 2 to forward.
 
 void stop_motors()
 {
-    uint slice_num_motor1 = pwm_gpio_to_slice_num(MOTOR1_PWM_PIN);
-    pwm_set_chan_level(slice_num_motor1, PWM_CHAN_A, 0); // Set duty cycle to 0 to stop
-    uint slice_num_motor2 = pwm_gpio_to_slice_num(MOTOR2_PWM_PIN);
-    pwm_set_chan_level(slice_num_motor2, PWM_CHAN_A, 0); // Set duty cycle to 0 to stop
+    // uint slice_num_motor1 = pwm_gpio_to_slice_num(MOTOR1_PWM_PIN);
+    // pwm_set_chan_level(slice_num_motor1, PWM_CHAN_A, 0); // Set duty cycle to 0 to stop
+    // uint slice_num_motor2 = pwm_gpio_to_slice_num(MOTOR2_PWM_PIN);
+    // pwm_set_chan_level(slice_num_motor2, PWM_CHAN_A, 0); // Set duty cycle to 0 to stop
+    pwm_set_gpio_level(MOTOR1_PWM_PIN, (uint16_t)(0.0 * MAX_DUTY_CYCLE));
+    pwm_set_gpio_level(MOTOR2_PWM_PIN, (uint16_t)(0.0 * MAX_DUTY_CYCLE));
 }
 // USED in car.c - This function is called in several places in car.c to stop both motors.
 

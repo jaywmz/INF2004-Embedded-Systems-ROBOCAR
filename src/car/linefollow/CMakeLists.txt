@@ -1,10 +1,7 @@
-
-
 add_library(linefollow STATIC
     linefollow.c
     linefollow.h
 )
-
 
 # Pull in the Pico SDK (pico_stdlib) for standard functions
 target_link_libraries(linefollow pico_stdlib hardware_pwm hardware_adc hardware_timer)

@@ -72,10 +72,6 @@ void get_compass_data(Compass *compass)
 {
     cyw43_arch_poll();
     printf("{d:%d,s:%d}\n", g_direction, g_speed);
-    compass->p = 0;
-    compass->r = 0;
-    compass->y = 0;
-    compass->direction = 'N';
-    compass->left_duty = 0;
-    compass->right_duty = 0;
+    compass->direction = g_direction;
+    compass->speed = g_speed;
 }

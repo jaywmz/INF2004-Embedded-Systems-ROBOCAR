@@ -41,6 +41,7 @@ typedef struct
     float output_min;
     float output_max;
     float previous_error;
+    float duty_cycle;
 } PIDController;
 
 void init_motors();
@@ -50,10 +51,10 @@ float pid_update(PIDController *pid, float measurement);
 float pid_compute(PIDController *pid, float measurement);
 void pid_reset(PIDController *pid);
 
-void move_forward();
-void move_backward();
-void turn_left();
-void turn_right();
+void move_forward(float duty_cycle_motor1, float duty_cycle_motor2);
+void move_backward(float duty_cycle_motor1, float duty_cycle_motor2);
+void turn_left(float duty_cycle_motor1, float duty_cycle_motor2);
+void turn_right(float duty_cycle_motor1, float duty_cycle_motor2);
 void strong_start(int direction);
 void stop_motors();
 

@@ -17,7 +17,7 @@
 #define DISTANCE_PER_NOTCH (WHEEL_CIRCUMFERENCE / ENCODER_NOTCHES_PER_REV) // in meters
 #define ENCODER_TIMEOUT_INTERVAL 1000000                                   // Timeout in microseconds (1 second)
 #define MICROSECONDS_IN_A_SECOND 1000000.0f
-#define SAMPLE_INTERVAL_MS 200 // Sampling interval in milliseconds
+#define SAMPLE_INTERVAL_MS 100 // Sampling interval in milliseconds
 
 typedef struct
 {

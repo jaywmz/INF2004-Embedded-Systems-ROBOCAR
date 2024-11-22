@@ -5,12 +5,8 @@
 
 typedef struct Compass
 {
-    int p;
-    int r;
-    int y;
-    char direction;
-    uint16_t left_duty;
-    uint16_t right_duty;
+    uint16_t direction;
+    uint16_t speed;
 } Compass;
 
 typedef struct Telemetry

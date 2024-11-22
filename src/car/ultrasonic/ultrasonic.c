@@ -100,40 +100,12 @@ void init_ultrasonic()
 }
 // USED in car.c - This function is called in `main` to initialize the ultrasonic sensor pins.
 
-double getCm(KalmanState *state)
-{
-    // Measure the pulse length from the ECHO pin
-    uint64_t pulse_length = measure_pulse_length();
-
-    if (pulse_length == 0 || pulse_length > timeout)
-    {
-        printf("Error: Pulse timeout or out of range.\n");
-        return 0;
-    }
-
-    // Calculate the distance based on pulse length
-    float distance = calculate_distance(pulse_length);
-
-    if (distance < 2 || distance > 400)
-    {
-        printf("Measured distance out of range: %.2f cm\n", distance);
-        return 0;
-    }
-
-    kalman_update(state, distance);
-
-    // Print the pulse length and calculated distance
-    // printf("Pulse Length: %llu us\nDistance: %.2f cm\nFiltered Distance: %.2f cm\n", pulse_length, distance, state->x);
-    return state->x;
-}
-// NOT USED in car.c - Instead, car.c uses `get_cm`, which takes `pulse_length` as an argument.
-
 double get_cm(KalmanState *state, uint64_t pulse_length)
 {
     if (pulse_length == 0 || pulse_length > timeout)
     {
         printf("Error: Pulse timeout or out of range.\n");
-        return 10 + 1;
+        return 21;
     }
 
     // Calculate the distance based on pulse length
@@ -142,13 +114,13 @@ double get_cm(KalmanState *state, uint64_t pulse_length)
     if (distance < 2 || distance > 400)
     {
         printf("Measured distance out of range: %.2f cm\n", distance);
-        return 10 + 1;
+        return 21;
     }
 
     kalman_update(state, distance);
 
     // Print the pulse length and calculated distance
-    printf("Pulse Length: %llu us\nDistance: %.2f cm\nFiltered Distance: %.2f cm\n", pulse_length, distance, state->x);
+    printf("Pulse Length: %llu us | Distance: %.2f cm | Filtered Distance: %.2f cm\n", pulse_length, distance, state->x);
     return state->x;
 }
 // USED in car.c - This function is called in `vTaskUltrasonic` to calculate the filtered distance from the ultrasonic sensor.
