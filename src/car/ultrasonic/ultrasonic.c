@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-const int timeout = 26000;               // Timeout for ultrasonic sensor (about 4.5 meters)
-volatile absolute_time_t start_time = 0; // Start time for echo pulse
+const int timeout = 26000;           // Timeout for ultrasonic sensor (about 4.5 meters)
+volatile absolute_time_t start_time; // Start time for echo pulse
 
 // Function to trigger the HC-SR04 and measure the pulse length on the ECHO pin
 uint64_t measure_pulse_length()
@@ -30,11 +30,13 @@ uint64_t measure_pulse_length()
     uint64_t pulse_length = end_time - start_time;
     return pulse_length;
 }
+// NOT USED in car.c - car.c uses `get_pulse_length` and `set_trigger_pin` separately instead of this combined function.
 
 void set_trigger_pin(int value)
 {
     gpio_put(TRIGPIN, value);
 }
+// USED in car.c - This function is called in `vTaskUltrasonic` to trigger the ultrasonic sensor.
 
 uint64_t get_pulse_length()
 {
@@ -52,14 +54,15 @@ uint64_t get_pulse_length()
     uint64_t pulse_length = end_time - start_time;
     return pulse_length;
 }
+// USED in car.c - This function is called in `vTaskUltrasonic` to measure the pulse width of the ultrasonic echo.
 
-// Function to calculate distance in centimeters
 float calculate_distance(uint64_t pulse_length)
 {
     // Speed of sound is approximately 343 meters per second
     // Divide by 2 to account for the round trip
     return (pulse_length / 58.0); // Distance in cm
 }
+// USED indirectly in car.c - This function is called within `get_cm` to calculate the distance in centimeters from pulse length.
 
 KalmanState *kalman_init(double q, double r, double p, double initial_value)
 {
@@ -70,6 +73,7 @@ KalmanState *kalman_init(double q, double r, double p, double initial_value)
     state->x = initial_value;
     return state;
 }
+// NOT USED in car.c - car.c initializes Kalman states directly rather than calling this function.
 
 void kalman_update(KalmanState *state, double measurement)
 {
@@ -78,6 +82,7 @@ void kalman_update(KalmanState *state, double measurement)
     state->x = state->x + state->k * (measurement - state->x);
     state->p = (1 - state->k) * state->p;
 }
+// USED indirectly in car.c - This function is called within `get_cm` to update the Kalman filter with new distance measurements.
 
 void init_ultrasonic()
 {
@@ -93,6 +98,7 @@ void init_ultrasonic()
 
     printf("Ultrasonic pins configured - TRIG: %d, ECHO: %d\n", TRIGPIN, ECHOPIN);
 }
+// USED in car.c - This function is called in `main` to initialize the ultrasonic sensor pins.
 
 double getCm(KalmanState *state)
 {
@@ -120,6 +126,7 @@ double getCm(KalmanState *state)
     // printf("Pulse Length: %llu us\nDistance: %.2f cm\nFiltered Distance: %.2f cm\n", pulse_length, distance, state->x);
     return state->x;
 }
+// NOT USED in car.c - Instead, car.c uses `get_cm`, which takes `pulse_length` as an argument.
 
 double get_cm(KalmanState *state, uint64_t pulse_length)
 {
@@ -144,3 +151,4 @@ double get_cm(KalmanState *state, uint64_t pulse_length)
     printf("Pulse Length: %llu us\nDistance: %.2f cm\nFiltered Distance: %.2f cm\n", pulse_length, distance, state->x);
     return state->x;
 }
+// USED in car.c - This function is called in `vTaskUltrasonic` to calculate the filtered distance from the ultrasonic sensor.

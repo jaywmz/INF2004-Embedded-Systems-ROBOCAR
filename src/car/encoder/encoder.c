@@ -4,14 +4,6 @@
 #include "pico/time.h"
 #include <stdio.h>
 
-// Wheel and Encoder Measurements
-#define ENCODER_NOTCHES_PER_REV 20
-#define WHEEL_DIAMETER 0.065                                               // in meters
-#define WHEEL_CIRCUMFERENCE (WHEEL_DIAMETER * 3.14159265358979323846)      // calculated as π * diameter
-#define DISTANCE_PER_NOTCH (WHEEL_CIRCUMFERENCE / ENCODER_NOTCHES_PER_REV) // in meters
-#define ENCODER_TIMEOUT_INTERVAL 1000000                                   // Timeout in microseconds (1 second)
-#define MICROSECONDS_IN_A_SECOND 1000000.0f
-
 // Debounce time in microseconds
 // #define DEBOUNCE_TIME_US 1000 // Adjust this value as needed
 
@@ -24,6 +16,7 @@ typedef struct
     float x; // Estimated value
 } KalmanState;
 
+// Initializes the Kalman filter state with given parameters
 void encoder_kalman_init(EncoderKalmanState *state, float q, float r, float p, float initial_value)
 {
     state->q = q;
@@ -32,7 +25,9 @@ void encoder_kalman_init(EncoderKalmanState *state, float q, float r, float p, f
     state->x = initial_value;
     state->k = 0.0;
 }
+// USED in car.c - This function is called in `vTaskEncoder` to initialize the Kalman filter state for each encoder.
 
+// Updates the Kalman filter with a new speed measurement
 void encoder_kalman_update(EncoderKalmanState *state, float measurement)
 {
     // Prediction update
@@ -43,8 +38,9 @@ void encoder_kalman_update(EncoderKalmanState *state, float measurement)
     state->x += state->k * (measurement - state->x);
     state->p *= (1 - state->k);
 }
+// USED indirectly in car.c - This function is called within `read_encoder_data` to update the Kalman filter with new speed measurements.
 
-// Function to calculate speed based on pulse width
+// Calculates the speed of the wheel based on the pulse width (time between encoder notches)
 static float calculate_speed(uint64_t pulse_width)
 {
     if (pulse_width == 0)
@@ -56,10 +52,12 @@ static float calculate_speed(uint64_t pulse_width)
     float rotation_time = (pulse_width * ENCODER_NOTCHES_PER_REV) / 1e6; // Convert to seconds
     float rotations_per_second = 1.0 / rotation_time;                    // Rotations per second
 
-    // Convert to linear speed (distance per second) in meters per second
-    return rotations_per_second * WHEEL_CIRCUMFERENCE;
+    // Convert to linear speed (distance per second) in cm per second
+    return rotations_per_second * WHEEL_CIRCUMFERENCE_CM;
 }
+// NOT USED directly in car.c - This function is called within `read_encoder_data` to compute speed, but not directly in `car.c`.
 
+// Reads data from the encoder pin, calculates the speed, and applies Kalman filtering
 void read_encoder_data(uint encoder_pin, EncoderData *encoder_data)
 {
     uint64_t current_time = time_us_64();
@@ -67,44 +65,54 @@ void read_encoder_data(uint encoder_pin, EncoderData *encoder_data)
     bool current_state = gpio_get(encoder_pin);
     if (current_state != encoder_data->_last_pin_state)
     {
-
         uint64_t pulse_width = current_time - encoder_data->_last_pulse_time;
 
-        // I only care about rising edges
+        // Only track rising edges of the encoder signal
         if (current_state == 1 && pulse_width > 0 && pulse_width < 1000000)
         {
             encoder_data->pulse_width = pulse_width;
-            float speed = calculate_speed(pulse_width);
-            encoder_kalman_update(&encoder_data->kalman_state, speed);
-            encoder_data->speed_m_per_s = encoder_data->kalman_state.x;
+            float speed = calculate_speed(pulse_width); // Calls `calculate_speed` to get speed
+            encoder_kalman_update(&encoder_data->kalman_state, speed); // Updates speed using Kalman filter
+            encoder_data->speed = encoder_data->kalman_state.x;
+            // encoder_data->speed = speed;     // Doesn't this override the kalman filter?
             encoder_data->pulse_count++;
-            if (encoder_pin == LEFT_ENCODER_PIN)
-            {
-                // printf("Left Speed: %.2f m/s, Pulse Width: %lluus, Filtered Speed: %.2f m/s\n", speed,
-                //        pulse_width, encoder_data->speed_m_per_s);
-            }
-            else
-            {
-                // printf("Right ");
-                // printf("Speed: %.2f m/s, Pulse Width: %lluus\n ", speed,
-                //        pulse_width);
-            }
         }
 
         encoder_data->_last_pulse_time = current_time;
     }
     encoder_data->_last_pin_state = current_state;
 }
+// USED in car.c - This function is called in `vTaskEncoder` to continuously read encoder data, calculate speed, and update pulse counts.
 
-// Initialization function for encoders and GPIO setup
+// Interrupt callbacks for encoders
+// void encoder_isr_motor1(uint gpio, uint32_t events) {
+//     motor1_encoder_data.pulse_count++;
+// }
+
+// void encoder_isr_motor2(uint gpio, uint32_t events) {
+//     motor2_encoder_data.pulse_count++;
+// }
+
+void shared_encoder_isr(uint gpio, uint32_t events) {
+    if (gpio == MOTOR1_ENCODER_PIN) {
+        motor1_encoder_data.pulse_count++;
+    } else if (gpio == MOTOR2_ENCODER_PIN) {
+        motor2_encoder_data.pulse_count++;
+    }
+}
+
+// Initializes the GPIO pins for the left and right encoders
 void init_encoder()
 {
     // Initialize GPIO pins for left and right encoders
-    gpio_init(LEFT_ENCODER_PIN);
-    gpio_set_dir(LEFT_ENCODER_PIN, GPIO_IN);
-    gpio_pull_up(LEFT_ENCODER_PIN);
+    gpio_init(MOTOR2_ENCODER_PIN);
+    gpio_set_dir(MOTOR2_ENCODER_PIN, GPIO_IN);
+    gpio_pull_up(MOTOR2_ENCODER_PIN);
+    gpio_set_irq_enabled_with_callback(MOTOR2_ENCODER_PIN, GPIO_IRQ_EDGE_RISE, true, &shared_encoder_isr);
 
-    gpio_init(RIGHT_ENCODER_PIN);
-    gpio_set_dir(RIGHT_ENCODER_PIN, GPIO_IN);
-    gpio_pull_up(RIGHT_ENCODER_PIN);
+    gpio_init(MOTOR1_ENCODER_PIN);
+    gpio_set_dir(MOTOR1_ENCODER_PIN, GPIO_IN);
+    gpio_pull_up(MOTOR1_ENCODER_PIN);
+    gpio_set_irq_enabled_with_callback(MOTOR1_ENCODER_PIN, GPIO_IRQ_EDGE_RISE, true, &shared_encoder_isr);
 }
+// USED in car.c - This function is called in `main` to set up the GPIO pins for the encoders.
