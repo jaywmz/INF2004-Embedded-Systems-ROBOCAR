@@ -540,3 +540,29 @@ void line_following_task(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(50)); // Small delay for stability
     }
 }
+
+
+// Main Function
+int main()
+{
+    stdio_init_all();
+    init_motor_pins();
+    setup_pwm(L_MOTOR_PWM_PIN, R_MOTOR_PWM_PIN);
+
+    // Initialize ADC
+    adc_init();
+
+    // Create ADC mutex
+    xAdcMutex = xSemaphoreCreateMutex();
+
+    TaskHandle_t detect_surface_contrast_handle, line_following_handle;
+
+    xTaskCreate(detect_surface_contrast_task, "Barcode Detection Task", 2048, NULL, 1, &detect_surface_contrast_handle);
+    xTaskCreate(line_following_task, "Line Following Task", 1024, NULL, 1, &line_following_handle);
+
+    vTaskStartScheduler();
+    while (true)
+    {
+        // Should never reach here
+    }
+}
