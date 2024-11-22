@@ -18,7 +18,7 @@
 #define UDP_PORT 4444
 #define BEACON_MSG_LEN_MAX 127
 #define BEACON_TARGET "255.255.255.255"
-#define BEACON_INTERVAL_MS 100
+#define BEACON_INTERVAL_MS 50
 
 // == Compass Configuration ==
 
@@ -40,7 +40,7 @@
 #define CTRL_REG5_A 0x24
 #define MR_REG_M 0x02
 
-#define THRESHHOLD 15
+#define THRESHHOLD 20
 #define MAX_PITCH 90.0f  // Max pitch angle for full speed
 #define MAX_ROLL 90.0f   // Max roll angle for full turn
 #define MAX_SPEED 100.0f // Max speed percentage
@@ -283,7 +283,6 @@ int map_direction_to_number(char direction)
 
 void udp_task(__unused void *params)
 {
-
     if (cyw43_arch_init())
     {
         printf("failed to initialise\n");
@@ -300,10 +299,8 @@ void udp_task(__unused void *params)
     netif_set_hostname(&cyw43_state.netif[CYW43_ITF_STA], hostname);
 
     printf("Connecting to WiFi...\n");
-    // while (cyw43_arch_wifi_connect_timeout_ms(
-    //     WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA3_WPA2_AES_PSK, 30000))
     while (cyw43_arch_wifi_connect_timeout_ms(
-        "embedded", "wifiisass", CYW43_AUTH_WPA3_WPA2_AES_PSK, 30000))
+        WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000))
     {
         printf("SSID: %s\n" WIFI_SSID);
         printf("\nPW: %s\n", WIFI_PASSWORD);
@@ -315,15 +312,18 @@ void udp_task(__unused void *params)
     printf("mdns host name %s.local\n", hostname);
     mdns_resp_add_netif(&cyw43_state.netif[CYW43_ITF_STA], hostname);
 
-    printf("\nReady, running on host %s\n",
+    printf("Ready, running on host %s\n",
            ip4addr_ntoa(netif_ip4_addr(netif_list)));
 
     struct udp_pcb *pcb = udp_new();
+    printf("Created UDP connection\n");
+
     if (!pcb)
     {
         printf("Error creating PCB\n");
         return;
     }
+    printf("Created PCB\n");
 
     ip_addr_t addr;
     ipaddr_aton(BEACON_TARGET, &addr);
@@ -334,6 +334,7 @@ void udp_task(__unused void *params)
         printf("Error allocating pbuf\n");
         return;
     }
+    printf("Allocated pbuf\n");
 
     while (1)
     {
@@ -351,6 +352,7 @@ void udp_task(__unused void *params)
         }
 
         cyw43_arch_poll();
+        vTaskDelay(pdMS_TO_TICKS(BEACON_INTERVAL_MS));
     }
     pbuf_free(p);
 

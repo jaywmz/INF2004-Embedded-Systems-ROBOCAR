@@ -25,9 +25,8 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, cons
 {
     if (p != NULL)
     {
-        // printf("Received packet from %s:%d\n", ipaddr_ntoa(addr), port);
         sscanf((char *)p->payload, "{d:%d,s:%d}", &g_direction, &g_speed);
-        // printf("Data: %.*s\n", p->len, (char *)p->payload);
+        printf("Received UDP packet: %s\n", (char *)p->payload);
         pbuf_free(p);
     }
 }
@@ -51,25 +50,25 @@ static void udp_server_init()
     udp_recv(udp_server_pcb, udp_server_recv, NULL);
     printf("UDP server listening on port %d\n", UDP_PORT);
 
-    g_sender_pcb = udp_new();
-    printf("Created Sender UDP connection\n");
+    // g_sender_pcb = udp_new();
+    // printf("Created Sender UDP connection\n");
 
-    if (!g_sender_pcb)
-    {
-        printf("Error creating Sender PCB\n");
-        return;
-    }
-    printf("Created Sender PCB\n");
+    // if (!g_sender_pcb)
+    // {
+    //     printf("Error creating Sender PCB\n");
+    //     return;
+    // }
+    // printf("Created Sender PCB\n");
 
-    ipaddr_aton(BEACON_TARGET, &g_addr);
+    // ipaddr_aton(BEACON_TARGET, &g_addr);
 
-    g_pbuf = pbuf_alloc(PBUF_TRANSPORT, BEACON_MSG_LEN_MAX + 1, PBUF_RAM);
-    if (!g_pbuf)
-    {
-        printf("Error allocating pbuf\n");
-        return;
-    }
-    printf("Allocated pbuf\n");
+    // g_pbuf = pbuf_alloc(PBUF_TRANSPORT, BEACON_MSG_LEN_MAX + 1, PBUF_RAM);
+    // if (!g_pbuf)
+    // {
+    //     printf("Error allocating pbuf\n");
+    //     return;
+    // }
+    // printf("Allocated pbuf\n");
 }
 
 void init_udp()
@@ -104,18 +103,18 @@ void get_compass_data(Compass *compass)
 
 void send_telemetry(Telemetry *telemetry)
 {
-    char *req = (char *)g_pbuf->payload;
-    memset(req, 0, BEACON_MSG_LEN_MAX + 1);
-    snprintf(req, BEACON_MSG_LEN_MAX, "{some_test_message}\n");
-    err_t er = udp_sendto(g_sender_pcb, g_pbuf, &g_addr, UDP_PORT);
-    if (er != ERR_OK)
-    {
-        printf("Failed to send UDP packet! error=%d", er);
-    }
-    else
-    {
-        printf("{some_test_message}\n");
-    }
+    // char *req = (char *)g_pbuf->payload;
+    // memset(req, 0, BEACON_MSG_LEN_MAX + 1);
+    // snprintf(req, BEACON_MSG_LEN_MAX, "{some_test_message}\n");
+    // err_t er = udp_sendto(g_sender_pcb, g_pbuf, &g_addr, UDP_PORT);
+    // if (er != ERR_OK)
+    // {
+    //     printf("Failed to send UDP packet! error=%d", er);
+    // }
+    // else
+    // {
+    //     printf("{some_test_message}\n");
+    // }
 
-    cyw43_arch_poll();
+    // cyw43_arch_poll();
 }

@@ -154,7 +154,7 @@ void vTaskMotor(__unused void *pvParameters)
     while (1)
     {
         float speed = ((float)compass.speed / 100.0f) * 2;
-        if (speed > 1.0) 
+        if (speed > 1.0)
         {
             speed = 1.0;
         }
@@ -163,14 +163,13 @@ void vTaskMotor(__unused void *pvParameters)
             if (PLS_STOP == 1)
             {
                 stop_motors();
-            } 
-            else 
+            }
+            else
             {
                 printf("Moving forward\n");
                 // adjust_motor_speeds_with_pid();
                 move_forward(speed - 0.02, speed);
             }
-
         }
         else if (compass.direction == 2)
         {
@@ -209,7 +208,11 @@ void vTaskCompass(__unused void *pvParameters)
     while (1)
     {
         get_compass_data(&compass);
+<<<<<<< HEAD
         // vTaskDelay(pdMS_TO_TICKS(100));
+=======
+        vTaskDelay(pdMS_TO_TICKS(50));
+>>>>>>> 96ef0b1e11501248b69ba18a219342d16f42fffe
     }
 }
 
@@ -242,6 +245,15 @@ void vTaskUltrasonic(__unused void *pvParameters)
     }
 }
 
+void vTaskDashboard(__unused void *pvParameters)
+{
+    while (1)
+    {
+        send_telemetry(NULL);
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
 // Function to launch all tasks and start the FreeRTOS scheduler
 void vLaunch()
 {
@@ -250,6 +262,7 @@ void vLaunch()
     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
     xTaskCreate(vTaskEncoder, "EncoderTask", 2048, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
     xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
+    xTaskCreate(vTaskDashboard, "DashboardTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 3UL, &dashboardTask);
     vTaskStartScheduler();
 }
 
@@ -263,9 +276,12 @@ int main(void)
     init_ultrasonic(); // Initialize ultrasonic sensor
 
     // Initialize PID controllers for both motors
-    float kp1 = 0.004; float kp2 = 0.01;
-    float ki1 = 0.01; float ki2 = 0.01;
-    float kd1 = 0.004; float kd2 = 0.004;
+    float kp1 = 0.004;
+    float kp2 = 0.01;
+    float ki1 = 0.01;
+    float ki2 = 0.01;
+    float kd1 = 0.004;
+    float kd2 = 0.004;
     float setpoint = 0.0;
     pid_init(&pid_motor_1, kp1, ki1, kd1, setpoint, 0.0, 1.0); // Left motor PID
     pid_init(&pid_motor_2, kp2, ki2, kd2, setpoint, 0.0, 1.0); // Right motor PID
