@@ -19,6 +19,7 @@
 EncoderData motor1_encoder_data, motor2_encoder_data;
 // Kalman filter state for ultrasonic distance measurements
 KalmanState kalman_state;
+Compass compass;
 
 // PID controllers for left and right motors
 PIDController pid_motor_1, pid_motor_2;
@@ -136,7 +137,8 @@ void vTaskEncoder(__unused void *pvParameters)
 }
 
 // Moving average function to get average speed
-float movingAvg(bool motor1, float newSpeed) {
+float movingAvg(bool motor1, float newSpeed)
+{
     const int len = 5;
     static float speedsMotor1[10] = {0.0};
     static float speedsMotor2[10] = {0.0};
@@ -145,33 +147,43 @@ float movingAvg(bool motor1, float newSpeed) {
     static float sum1 = 0;
     static float sum2 = 0;
 
-    if (motor1) {
+    if (motor1)
+    {
         sum1 = sum1 - speedsMotor1[index1] + newSpeed;
 
         speedsMotor1[index1] = newSpeed;
 
         index1++;
-        if (index1 >= len - 1) {index1 = 0;}
+        if (index1 >= len - 1)
+        {
+            index1 = 0;
+        }
 
         return sum1 / len;
     }
-    else {
+    else
+    {
         sum2 = sum2 - speedsMotor2[index2] + newSpeed;
 
         speedsMotor2[index2] = newSpeed;
 
         index2++;
-        if (index2 >= len - 1) {index2 = 0;}
+        if (index2 >= len - 1)
+        {
+            index2 = 0;
+        }
 
         return sum2 / len;
     }
 }
 
 // Task to measure speed (pulses per second)
-void encoder_task(void *pvParameters) {
+void encoder_task(void *pvParameters)
+{
     int prev_pulses_motor1 = 0, prev_pulses_motor2 = 0;
 
-    while (1) {
+    while (1)
+    {
         // Find number of pulses since last interval
         int pulses_motor1 = motor1_encoder_data.pulse_count - prev_pulses_motor1;
         int pulses_motor2 = motor2_encoder_data.pulse_count - prev_pulses_motor2;
@@ -196,7 +208,7 @@ void encoder_task(void *pvParameters) {
 void vTaskMotor(__unused void *pvParameters)
 {
     int state = 0;
-    while (1)   
+    while (1)
     {
         if (PLS_STOP == 1) // If an obstacle is detected
         {
@@ -231,38 +243,38 @@ void vTaskMotor(__unused void *pvParameters)
             vTaskDelay(pdMS_TO_TICKS(SAMPLE_INTERVAL_MS / 2)); // Wait for next sample
         }
 
-//         if (compass.direction == 'f')
-//         {
-//             printf("Moving forward\n");
-//             move_forward();
-//         }
-//         else if (compass.direction == 'b')
-//         {
-//             printf("Moving backward\n");
-//             move_backward();
-//         }
-//         else if (compass.direction == 'l')
-//         {
-//             printf("Turning left\n");
-//             motor1_backward(compass.left_duty);
-//             motor2_forward(compass.right_duty);
-//         }
-//         else if (compass.direction == 'r')
-//         {
-//             printf("Turning right\n");
-//             motor1_forward(compass.left_duty);
-//             motor2_backward(compass.right_duty);
-//         }
-//         else if (compass.direction == 's')
-//         {
-//             printf("Stopping\n");
-//             stop_motors();
-//         }
-//         else
-//         {
-//             printf("Invalid direction\n");
-//             stop_motors();
-//         }
+        //         if (compass.direction == 'f')
+        //         {
+        //             printf("Moving forward\n");
+        //             move_forward();
+        //         }
+        //         else if (compass.direction == 'b')
+        //         {
+        //             printf("Moving backward\n");
+        //             move_backward();
+        //         }
+        //         else if (compass.direction == 'l')
+        //         {
+        //             printf("Turning left\n");
+        //             motor1_backward(compass.left_duty);
+        //             motor2_forward(compass.right_duty);
+        //         }
+        //         else if (compass.direction == 'r')
+        //         {
+        //             printf("Turning right\n");
+        //             motor1_forward(compass.left_duty);
+        //             motor2_backward(compass.right_duty);
+        //         }
+        //         else if (compass.direction == 's')
+        //         {
+        //             printf("Stopping\n");
+        //             stop_motors();
+        //         }
+        //         else
+        //         {
+        //             printf("Invalid direction\n");
+        //             stop_motors();
+        //         }
     }
 }
 
@@ -321,17 +333,20 @@ void vLaunch()
 // Main function for system initialization and launching tasks
 int main(void)
 {
-    stdio_init_all();  // Initialize standard I/O for debugging
+    stdio_init_all(); // Initialize standard I/O for debugging
     init_udp();
     init_encoder();    // Initialize encoders
     init_motors();     // Initialize motors
     init_ultrasonic(); // Initialize ultrasonic sensor
 
     // Initialize PID controllers for both motors
-    float kp1 = 0.006; float kp2 = 0.01;
-    float ki1 = 0.01; float ki2 = 0.01;
-    float kd1 = 0.014; float kd2 = 0.010;
-    float setpoint = 25.0;  // speed of 34 pulses per second
+    float kp1 = 0.006;
+    float kp2 = 0.01;
+    float ki1 = 0.01;
+    float ki2 = 0.01;
+    float kd1 = 0.014;
+    float kd2 = 0.010;
+    float setpoint = 25.0;                                     // speed of 34 pulses per second
     pid_init(&pid_motor_1, kp1, ki1, kd1, setpoint, 0.0, 1.0); // Left motor PID
     pid_init(&pid_motor_2, kp2, ki2, kd2, setpoint, 0.0, 1.0); // Right motor PID
 
