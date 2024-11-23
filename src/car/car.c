@@ -258,17 +258,17 @@ void vTaskLineFollow(__unused void *pvParameters)
         if (read_line_sensor() == BLACK)
         {
             current_time = time_us_64();
-            move_forward(0.7, 0.6);
+            move_forward(0.55, 0.65);
+        }
+        else
+        {
+            move_forward(0.65, 0.55);
         }
 
         uint64_t new_time = time_us_64();
         if (new_time - current_time > 250000)
         {
             move_forward(0, 0.7);
-        }
-        else
-        {
-            move_forward(0.6, 0.7);
         }
     }
 }
