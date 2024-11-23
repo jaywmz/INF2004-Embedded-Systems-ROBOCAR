@@ -9,13 +9,15 @@
 #include "udp.h"
 #include "hardware/pwm.h"
 #include "hardware/adc.h"
-#include "semphr.h" // For mutex
-#include "IR_Bar_Line.h"
+#include "line.h"
+#include "pico/time.h"
 #include <string.h>
 
-#ifndef RUN_FREERTOS_ON_CORE
-#define RUN_FREERTOS_ON_CORE 0
-#endif
+// Constants for movement and stopping distances
+#define STOPPING_DISTANCE 20.0 // Distance in cm to stop when obstacle detected
+#define MOVE_DISTANCE_CM 82.0  // Distance to move forward after turning
+#define LINE_SENSOR_PIN 27     // GPIO 27 connected to ADC input 1 (Line Following)
+#define BARCODE_THRESHOLD 1800 // Threshold for barcode detection
 
 // Global encoder data structures for left and right wheels
 EncoderData motor1_encoder_data, motor2_encoder_data;
@@ -27,11 +29,6 @@ Compass compass;
 PIDController pid_motor_1, pid_motor_2;
 // Global flag to indicate when the car should stop based on ultrasonic readings
 int PLS_STOP = 0;
-// Constants for movement and stopping distances
-#define STOPPING_DISTANCE 20.0 // Distance in cm to stop when obstacle detected
-#define MOVE_DISTANCE_CM 82.0  // Distance to move forward after turning
-#define LINE_SENSOR_PIN 27     // GPIO 27 connected to ADC input 1 (Line Following)
-#define BARCODE_THRESHOLD 1800 // Threshold for barcode detection
 
 // Moving average function to get average speed
 float movingAvg(bool motor1, float newSpeed)
@@ -180,9 +177,11 @@ void vTaskUltrasonic(__unused void *pvParameters)
         set_trigger_pin(1);
         vTaskDelay(pdMS_TO_TICKS(10));
         set_trigger_pin(0);
+
         // Measure pulse length and calculate distance
         uint64_t pulse_length = get_pulse_length();
         double distance = get_cm(&kalman_state, pulse_length);
+
         // Set or clear stop flag based on distance
         if (distance < STOPPING_DISTANCE)
         {
@@ -192,12 +191,11 @@ void vTaskUltrasonic(__unused void *pvParameters)
         {
             PLS_STOP = 0;
         }
-        // vTaskDelay(pdMS_TO_TICKS(50)); // Small delay for next measurement
     }
 }
 
 // Dashboard task to send car sensor data to serial monitor
-void vTaskDashboard(__unused void *pvParameters)
+void vTaskTelemetry(__unused void *pvParameters)
 {
 
     while (1)
@@ -207,55 +205,84 @@ void vTaskDashboard(__unused void *pvParameters)
     }
 }
 
-TaskHandle_t motorTask, compassTask, encoderTask, distanceTask, dashboardTask, lineFollowTask, detect_surface_contrast_handle, line_following_handle;
+TaskHandle_t motorTask, lineFollowTask;
 
 // Line detecting task to search for black line and change to line following task when detected
 void vTaskLineDetect(__unused void *pvParameters)
 {
-    // adc_gpio_init(LINE_SENSOR_PIN); // Initialize ADC pin for barcode sensor
     static bool line_detected = false;
     while (true)
     {
-        // Acquire ADC mutex
-        xSemaphoreTake(xAdcMutex, portMAX_DELAY);
-
         uint16_t adc_value = read_adc(0); // Read from ADC input 0 (Pin 26)
 
-        // Release ADC mutex
-        xSemaphoreGive(xAdcMutex);
-
         const char *current_color = (adc_value > BARCODE_THRESHOLD) ? "Black" : "White";
-        // printf("Current color: %s\n", current_color);
-        // printf("Current ADC Value: %d | Current Color %s\n", adc_value, current_color);
 
         if (!line_detected && strcmp(current_color, "Black") == 0)
         {
             line_detected = true;
             vTaskDelete(motorTask);
-            xTaskCreate(detect_surface_contrast_task, "Barcode Detection Task", 2048, NULL, tskIDLE_PRIORITY + 2UL, &detect_surface_contrast_handle);
-            xTaskCreate(line_following_task, "Line Following Task", 1024, NULL, tskIDLE_PRIORITY + 2UL, &line_following_handle);
+            // xTaskCreate(detect_surface_contrast_task, "Barcode Detection Task", 2048, NULL, tskIDLE_PRIORITY + 2UL, &detect_surface_contrast_handle);
+            // xTaskCreate(line_following_task, "Line Following Task", 1024, NULL, tskIDLE_PRIORITY + 2UL, &line_following_handle);
         }
-        // else if (line_detected && strcmp(current_color, "White") == 0)
-        // {
-        //     line_detected = false;
-        //     printf("White line detected\n");
-        //     vTaskDelete(detect_surface_contrast_handle);
-        //     vTaskDelete(line_following_handle);
-        //     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
-        // }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
+// void vTaskLineFollow(__unused void *pvParameters)
+// {
+//     // Start moving forward initially
+//     move_forward(0.6, 0.6); // Set initial speed
+
+//     while (1)
+//     {
+//         if (read_line_sensor() == BLACK)
+//         {
+//             move_forward(0.6, 0.7);
+//         }
+//         else
+//         {
+//             move_forward(0.7, 0.6);
+//         }
+//     }
+// }
+
+void vTaskLineFollow(__unused void *pvParameters)
+{
+    // Start moving forward initially
+    move_forward(0.6, 0.6); // Set initial speed
+
+    uint64_t current_time = 0;
+
+    while (1)
+    {
+        if (read_line_sensor() == BLACK)
+        {
+            current_time = time_us_64();
+            move_forward(0.7, 0.6);
+        }
+
+        uint64_t new_time = time_us_64();
+        if (new_time - current_time > 250000)
+        {
+            move_forward(0, 0.7);
+        }
+        else
+        {
+            move_forward(0.6, 0.7);
+        }
     }
 }
 
 // Function to launch all tasks and start the FreeRTOS scheduler
 void vLaunch()
 {
-    xTaskCreate(vTaskCompass, "CompassTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &compassTask);
-    xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
+    TaskHandle_t compassTask, encoderTask, distanceTask, dashboardTask;
+    // xTaskCreate(vTaskCompass, "CompassTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &compassTask);
+    // xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
     xTaskCreate(vTaskEncoder, "EncoderTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
     xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
-    // xTaskCreate(vTaskDashboard, "DashboardTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 3UL, &dashboardTask);
-    xTaskCreate(vTaskLineDetect, "LineDetectTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 3UL, &lineFollowTask);
+    // xTaskCreate(vTaskTelemetry, "DashboardTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 3UL, &dashboardTask);
+    xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineFollowTask);
     vTaskStartScheduler();
 }
 
@@ -267,10 +294,7 @@ int main(void)
     init_encoder();    // Initialize encoders
     init_motors();     // Initialize motors
     init_ultrasonic(); // Initialize ultrasonic sensor
-    adc_init();
-
-    // Create ADC mutex
-    xAdcMutex = xSemaphoreCreateMutex();
+    init_ir_sensors(); // Initialize IR sensors
 
     // Initialize PID controllers for both motors
     float kp1 = 0.004;

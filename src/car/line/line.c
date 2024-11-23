@@ -9,7 +9,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include "semphr.h" // For mutex
-#include "IR_Bar_Line.h"
+#include "line.h"
 #include "../motor/motor.h"
 
 // Code 39 Encoding (Narrow = 1, Wide = 2)
@@ -320,92 +320,16 @@ uint16_t read_adc_avg(uint8_t input, uint8_t num_samples)
     return (uint16_t)(sum / num_samples);
 }
 
-void line_following_task(void *pvParameters)
+LineColor read_line_sensor(void)
 {
-    enum
-    {
-        ON_LINE,
-        SEARCHING
-    } robot_state = ON_LINE;
-    adc_gpio_init(LINE_SENSOR_PIN); // Initialize ADC pin for line sensor
+    uint16_t adc_value = read_adc_avg(1, 10); // Read from ADC input 1 (Pin 27)
 
-    // Define the number of samples to average
-    const uint8_t num_samples = 10;
+    return (adc_value > LINE_THRESHOLD) ? BLACK : WHITE;
+}
 
-    // Start moving forward initially
-    move_forward(0.6, 0.6); // Set initial speed
-
-    while (1)
-    {
-        // Acquire ADC mutex
-        xSemaphoreTake(xAdcMutex, portMAX_DELAY);
-
-        // Get averaged ADC value
-        uint16_t adc_value = read_adc_avg(1, num_samples); // Read from ADC input 1 (Pin 27)
-
-        // Release ADC mutex
-        xSemaphoreGive(xAdcMutex);
-
-        printf("[Line Following: Averaged ADC Value: %d]\n", adc_value);
-
-        if (adc_value > LINE_THRESHOLD)
-        {
-            // Black line detected
-            if (robot_state == SEARCHING)
-            {
-                printf("Black line found. Resuming normal line-following.\n");
-            }
-
-            // Move forward at normal speed
-            move_forward(0.6, 0.6);
-            robot_state = ON_LINE;
-        }
-        else
-        {
-            // White surface detected
-            if (robot_state == ON_LINE)
-            {
-                printf("Line lost. Entering search mode.\n");
-                robot_state = SEARCHING;
-            }
-
-            // Search for the black line by turning alternately
-            static bool turn_left_first = true; // Alternate between left and right turns
-
-            if (turn_left_first)
-            {
-                printf("Searching: Turning left.\n");
-                turn_left(0.7, 0.7);
-                vTaskDelay(pdMS_TO_TICKS(100)); // Small turn duration
-            }
-            else
-            {
-                printf("Searching: Turning right.\n");
-                turn_right(0.7, 0.7);
-                vTaskDelay(pdMS_TO_TICKS(100)); // Small turn duration
-            }
-
-            // Alternate direction for the next search attempt
-            turn_left_first = !turn_left_first;
-
-            // Stop after each adjustment to allow sensor re-check
-            stop_motors();
-            vTaskDelay(pdMS_TO_TICKS(100)); // Short delay before re-checking sensor
-
-            // Re-check sensor value after adjustment
-            xSemaphoreTake(xAdcMutex, portMAX_DELAY);
-            adc_value = read_adc_avg(1, num_samples); // Read from ADC input 1 (Pin 27)
-            xSemaphoreGive(xAdcMutex);
-
-            if (adc_value > LINE_THRESHOLD)
-            {
-                // Black line re-detected
-                printf("Black line re-detected during search.\n");
-                move_forward(0.6, 0.6); // Resume forward motion
-                robot_state = ON_LINE;
-            }
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(50)); // Small delay for stability
-    }
+void init_ir_sensors(void)
+{
+    adc_init();
+    adc_gpio_init(BARCODE_SENSOR_PIN);
+    adc_gpio_init(LINE_SENSOR_PIN);
 }

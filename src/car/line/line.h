@@ -30,7 +30,11 @@
 #define END_BAR_SPACE_THRESHOLD 3000000
 #define MAX_WHITE_TIME 5000000
 
-extern SemaphoreHandle_t xAdcMutex;
+typedef enum LineColor
+{
+    BLACK,
+    WHITE
+} LineColor;
 
 void detect_surface_contrast_task(void *pvParameters);
 void line_following_task(void *pvParameters);
@@ -42,5 +46,8 @@ void decode_barcode();
 void display_captured_bars();
 int levenshtein_distance(const char *s, const char *t);
 char classify_bar_width(uint64_t width, uint64_t max_width);
+
+void init_ir_sensors(void);
+LineColor read_line_sensor(void);
 
 #endif // LINE_FOLLOWER_H

@@ -2,7 +2,7 @@ add_subdirectory(motor)
 add_subdirectory(udp)
 add_subdirectory(encoder)
 add_subdirectory(ultrasonic)
-add_subdirectory(IR_Bar_Line)
+add_subdirectory(line)
 
 add_executable(car
     car.c
@@ -18,7 +18,7 @@ target_include_directories(car PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/motor
     ${CMAKE_CURRENT_LIST_DIR}/encoder
     ${CMAKE_CURRENT_LIST_DIR}/ultrasonic
-    ${CMAKE_CURRENT_LIST_DIR}/IR_Bar_Line
+    ${CMAKE_CURRENT_LIST_DIR}/line
 )
 
 target_link_libraries(car
@@ -26,10 +26,10 @@ target_link_libraries(car
     udp
     encoder
     ultrasonic
-    IR_Bar_Line
+    line
     pico_stdlib
     hardware_adc
-    hardware_pwm 
+    hardware_pwm
     FreeRTOS-Kernel-Heap4 # FreeRTOS kernel and dynamic heap
 )
 
