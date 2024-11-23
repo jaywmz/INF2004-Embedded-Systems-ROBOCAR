@@ -247,3 +247,41 @@ void init_motors()
     setup_pwm(MOTOR2_PWM_PIN);
 }
 // USED in car.c - This function is called in `main` to initialize the motors and set up PWM.
+
+
+// Helpfer function to map speed percentage from remote controller to speed in pulses per second for PID controller
+// float percent_to_pulsesPerSec(uint16_t speedPercentage) {
+//     // 25 pulses per sec is roughly the maximum speed of car at 100% duty cycle on the ground
+//     float speed = ((float)speedPercentage / 100.0f);
+//     float pulsesPerSec;
+//     if (speed >= 0.6 && speed < 0.7) {
+//         pulsesPerSec = 22.0f;
+//     }
+//     else if (speed >= 0.7 && speed < 0.8) {
+//         pulsesPerSec = 23.0f;
+//     }
+//     else if (speed >= 0.8 && speed < 0.9) {
+//         pulsesPerSec = 24.0f;
+//     }
+//     else if (speed >= 0.9 && speed < 1.0) {
+//         pulsesPerSec = 25.0f;
+//     }
+//     return pulsesPerSec;
+// }
+
+// Function to adjust motor speeds dynamically to maintain straight movement using PID
+// void adjust_motor_speeds_with_pid()
+// {
+//     // Get desired speed from remote control message
+//     float speed = percent_to_pulsesPerSec(compass.speed);
+//     pid_motor_1.setpoint = speed;
+//     pid_motor_2.setpoint = speed;
+
+//     // Compute new duty cycle based on the current pulse count vs. the target
+//     float motor1_dutyCycle = pid_update(&pid_motor_1, motor1_encoder_data.speed);
+//     float motor2_dutyCycle = pid_update(&pid_motor_2, motor2_encoder_data.speed);
+
+//     // Store calculated duty cycle
+//     pid_motor_1.duty_cycle = motor1_dutyCycle;
+//     pid_motor_2.duty_cycle = motor2_dutyCycle;
+// }

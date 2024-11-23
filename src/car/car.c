@@ -8,8 +8,10 @@
 #include <math.h>
 #include "udp.h"
 #include "hardware/pwm.h"
-// #include "barcode.h"
-// #include "linefollow.h"
+#include "hardware/adc.h"
+#include "semphr.h" // For mutex
+#include "IR_Bar_Line.h"
+#include <string.h>
 
 #ifndef RUN_FREERTOS_ON_CORE
 #define RUN_FREERTOS_ON_CORE 0
@@ -28,56 +30,8 @@ int PLS_STOP = 0;
 // Constants for movement and stopping distances
 #define STOPPING_DISTANCE 20.0 // Distance in cm to stop when obstacle detected
 #define MOVE_DISTANCE_CM 82.0  // Distance to move forward after turning
-
-// Helpfer function to map speed percentage from remote controller to speed in pulses per second for PID controller
-// float percent_to_pulsesPerSec(uint16_t speedPercentage) {
-//     // 25 pulses per sec is roughly the maximum speed of car at 100% duty cycle on the ground
-//     float speed = ((float)speedPercentage / 100.0f);
-//     float pulsesPerSec;
-//     if (speed >= 0.6 && speed < 0.7) {
-//         pulsesPerSec = 22.0f;
-//     }
-//     else if (speed >= 0.7 && speed < 0.8) {
-//         pulsesPerSec = 23.0f;
-//     }
-//     else if (speed >= 0.8 && speed < 0.9) {
-//         pulsesPerSec = 24.0f;
-//     }
-//     else if (speed >= 0.9 && speed < 1.0) {
-//         pulsesPerSec = 25.0f;
-//     }
-//     return pulsesPerSec;
-// }
-
-// Function to adjust motor speeds dynamically to maintain straight movement using PID
-// void adjust_motor_speeds_with_pid()
-// {
-//     // Get desired speed from remote control message
-//     float speed = percent_to_pulsesPerSec(compass.speed);
-//     pid_motor_1.setpoint = speed;
-//     pid_motor_2.setpoint = speed;
-
-//     // Compute new duty cycle based on the current pulse count vs. the target
-//     float motor1_dutyCycle = pid_update(&pid_motor_1, motor1_encoder_data.speed);
-//     float motor2_dutyCycle = pid_update(&pid_motor_2, motor2_encoder_data.speed);
-
-//     // Store calculated duty cycle
-//     pid_motor_1.duty_cycle = motor1_dutyCycle;
-//     pid_motor_2.duty_cycle = motor2_dutyCycle;
-// }
-
-// Encoder task for reading encoder data and updating encoder structures
-// void vTaskEncoder(__unused void *pvParameters)
-// {
-//     encoder_kalman_init(&motor2_encoder_data.kalman_state, 0.1, 0.1, 1.0, 0.0);
-//     encoder_kalman_init(&motor1_encoder_data.kalman_state, 0.1, 0.1, 1.0, 0.0);
-
-//     while (1)
-//     {
-//         read_encoder_data(MOTOR2_ENCODER_PIN, &motor2_encoder_data);
-//         read_encoder_data(MOTOR1_ENCODER_PIN, &motor1_encoder_data);
-//     }
-// }
+#define LINE_SENSOR_PIN 27      // GPIO 27 connected to ADC input 1 (Line Following)
+#define BARCODE_THRESHOLD 1800  // Threshold for barcode detection
 
 // Moving average function to get average speed
 float movingAvg(bool motor1, float newSpeed)
@@ -241,6 +195,7 @@ void vTaskUltrasonic(__unused void *pvParameters)
     }
 }
 
+// Dashboard task to send car sensor data to serial monitor
 void vTaskDashboard(__unused void *pvParameters)
 {
     while (1)
@@ -250,15 +205,44 @@ void vTaskDashboard(__unused void *pvParameters)
     }
 }
 
+TaskHandle_t motorTask, compassTask, encoderTask, distanceTask, dashboardTask, lineFollowTask, detect_surface_contrast_handle, line_following_handle;
+
+// Line detecting task to search for black line and change to line following task when detected
+void vTaskLineDetect(__unused void *pvParameters) {
+    // adc_gpio_init(LINE_SENSOR_PIN); // Initialize ADC pin for barcode sensor
+
+    while (true)
+    {
+        // Acquire ADC mutex
+        xSemaphoreTake(xAdcMutex, portMAX_DELAY);
+
+        uint16_t adc_value = read_adc(0); // Read from ADC input 0 (Pin 26)
+
+        // Release ADC mutex
+        xSemaphoreGive(xAdcMutex);
+
+        const char *current_color = (adc_value > BARCODE_THRESHOLD) ? "Black" : "White";
+
+        if (strcmp(current_color, "Black") == 0)
+        {
+            vTaskDelete(motorTask);
+
+                    xTaskCreate(detect_surface_contrast_task, "Barcode Detection Task", 2048, NULL, tskIDLE_PRIORITY + 1UL, &detect_surface_contrast_handle);
+    xTaskCreate(line_following_task, "Line Following Task", 1024, NULL, tskIDLE_PRIORITY + 1UL, &line_following_handle);
+        }
+    }
+}
+
 // Function to launch all tasks and start the FreeRTOS scheduler
 void vLaunch()
 {
-    TaskHandle_t motorTask, compassTask, encoderTask, distanceTask, dashboardTask;
     xTaskCreate(vTaskCompass, "CompassTask", 2048, NULL, tskIDLE_PRIORITY + 1UL, &compassTask);
     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
     xTaskCreate(vTaskEncoder, "EncoderTask", 2048, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
+
     xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
-    xTaskCreate(vTaskDashboard, "DashboardTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 3UL, &dashboardTask);
+    // xTaskCreate(vTaskDashboard, "DashboardTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 3UL, &dashboardTask);
+    xTaskCreate(vTaskLineDetect, "LineDetectTask", 2048, NULL, tskIDLE_PRIORITY + 2UL, &lineFollowTask);
     vTaskStartScheduler();
 }
 
@@ -270,6 +254,10 @@ int main(void)
     init_encoder();    // Initialize encoders
     init_motors();     // Initialize motors
     init_ultrasonic(); // Initialize ultrasonic sensor
+    adc_init();
+    
+    // Create ADC mutex
+    xAdcMutex = xSemaphoreCreateMutex();
 
     // Initialize PID controllers for both motors
     float kp1 = 0.004;
