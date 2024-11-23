@@ -32,15 +32,6 @@
 
 extern SemaphoreHandle_t xAdcMutex;
 
-// Function declarations
-// void setup_pwm(uint32_t gpioLeft, uint32_t gpioRight);
-// void init_motor_pins();
-// void move_forward(float speed);
-// void turn_left(float speed);
-// void turn_right(float speed);
-// void stop_motors();
-// void set_motor_speed(uint32_t gpio, float speed, bool is_left);
-
 void detect_surface_contrast_task(void *pvParameters);
 void line_following_task(void *pvParameters);
 
