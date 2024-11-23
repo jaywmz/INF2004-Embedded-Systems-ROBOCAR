@@ -26,7 +26,6 @@ const char *code39_patterns[] = {
 
 const char code39_chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-*";
 
-
 // Global Variables for Barcode Detection
 volatile uint64_t last_white_time = 0;
 volatile uint64_t last_transition_time = 0;
@@ -220,9 +219,9 @@ char decode_character()
     printf("Debug: Captured Pattern: %s\n", pattern);
 
     int min_distance = INT_MAX;
-    char best_matches[10];  // Adjust size as needed
+    char best_matches[10]; // Adjust size as needed
     int best_matches_count = 0;
-    int best_match_is_reverse[10];  // Array to track if match is reverse
+    int best_match_is_reverse[10]; // Array to track if match is reverse
 
     // Check both the pattern and its reverse
     char reverse_pattern[MAX_BARS + 1] = {0};
@@ -410,14 +409,18 @@ uint16_t read_adc_avg(uint8_t input, uint8_t num_samples)
 
 void line_following_task(void *pvParameters)
 {
-    enum { ON_LINE, SEARCHING } robot_state = ON_LINE;
+    enum
+    {
+        ON_LINE,
+        SEARCHING
+    } robot_state = ON_LINE;
     adc_gpio_init(LINE_SENSOR_PIN); // Initialize ADC pin for line sensor
 
     // Define the number of samples to average
     const uint8_t num_samples = 10;
 
     // Start moving forward initially
-    move_forward(0.6, 0.6); // Set initial speed 
+    move_forward(0.6, 0.6); // Set initial speed
 
     while (1)
     {
@@ -441,7 +444,7 @@ void line_following_task(void *pvParameters)
             }
 
             // Move forward at normal speed
-            move_forward(0.6, 0.6); 
+            move_forward(0.6, 0.6);
             robot_state = ON_LINE;
         }
         else
@@ -459,14 +462,14 @@ void line_following_task(void *pvParameters)
             if (turn_left_first)
             {
                 printf("Searching: Turning left.\n");
-                turn_left(0.6, 0.6);
-                vTaskDelay(pdMS_TO_TICKS(200)); // Small turn duration
+                turn_left(0.7, 0.7);
+                vTaskDelay(pdMS_TO_TICKS(100)); // Small turn duration
             }
             else
             {
                 printf("Searching: Turning right.\n");
-                turn_right(0.6, 0.6); 
-                vTaskDelay(pdMS_TO_TICKS(200)); // Small turn duration
+                turn_right(0.7, 0.7);
+                vTaskDelay(pdMS_TO_TICKS(100)); // Small turn duration
             }
 
             // Alternate direction for the next search attempt

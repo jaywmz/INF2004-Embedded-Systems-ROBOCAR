@@ -104,7 +104,7 @@ double get_cm(KalmanState *state, uint64_t pulse_length)
 {
     if (pulse_length == 0 || pulse_length > timeout)
     {
-        printf("Error: Pulse timeout or out of range.\n");
+        // printf("Error: Pulse timeout or out of range.\n");
         return 21;
     }
 
@@ -113,14 +113,14 @@ double get_cm(KalmanState *state, uint64_t pulse_length)
 
     if (distance < 2 || distance > 400)
     {
-        printf("Measured distance out of range: %.2f cm\n", distance);
+        // printf("Measured distance out of range: %.2f cm\n", distance);
         return 21;
     }
 
     kalman_update(state, distance);
 
     // Print the pulse length and calculated distance
-    printf("Pulse Length: %llu us | Distance: %.2f cm | Filtered Distance: %.2f cm\n", pulse_length, distance, state->x);
+    // printf("Pulse Length: %llu us | Distance: %.2f cm | Filtered Distance: %.2f cm\n", pulse_length, distance, state->x);
     return state->x;
 }
 // USED in car.c - This function is called in `vTaskUltrasonic` to calculate the filtered distance from the ultrasonic sensor.

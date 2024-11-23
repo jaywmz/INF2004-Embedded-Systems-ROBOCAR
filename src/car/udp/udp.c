@@ -97,7 +97,7 @@ void init_udp()
 void get_compass_data(Compass *compass)
 {
     cyw43_arch_poll();
-    printf("{d:%d,s:%d}\n", g_direction, g_speed);
+    // printf("{d:%d,s:%d}\n", g_direction, g_speed);
     compass->direction = g_direction;
     compass->speed = g_speed;
 }
@@ -114,7 +114,7 @@ void send_telemetry(Telemetry *telemetry)
     }
     else
     {
-        printf("{some_test_message}\n");
+        // printf("{some_test_message}\n");
     }
 
     cyw43_arch_poll();

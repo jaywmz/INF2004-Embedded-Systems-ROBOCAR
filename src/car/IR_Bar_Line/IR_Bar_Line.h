@@ -15,12 +15,12 @@
 // #define MAX_DUTY_CYCLE 12500
 
 // IR Sensors
-#define BARCODE_SENSOR_PIN 26   // GPIO 26 connected to ADC input 0 (Barcode)
-#define LINE_SENSOR_PIN 27      // GPIO 27 connected to ADC input 1 (Line Following)
+#define BARCODE_SENSOR_PIN 26 // GPIO 26 connected to ADC input 0 (Barcode)
+#define LINE_SENSOR_PIN 27    // GPIO 27 connected to ADC input 1 (Line Following)
 
 // Thresholds
-#define BARCODE_THRESHOLD 1800  // Threshold for barcode detection
-#define LINE_THRESHOLD 1800     // Threshold for line-following sensor
+#define BARCODE_THRESHOLD 1800 // Threshold for barcode detection
+#define LINE_THRESHOLD 1800    // Threshold for line-following sensor
 
 // Barcode Detection Settings
 #define NUM_SAMPLES 2
