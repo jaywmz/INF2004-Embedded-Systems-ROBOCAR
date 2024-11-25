@@ -255,8 +255,8 @@ void detect_surface_contrast_task(void *pvParameters)
                     bar_widths[bar_count] = pulse_duration_us;
                     bar_colors[bar_count] = previous_color;
 
-                    printf("Captured Bar Color: %s\n", previous_color);
-                    printf("Captured bar #%d: Width = %llu us\n", bar_count, pulse_duration_us);
+                    printf("Bar Color: %s\n", previous_color);
+                    printf("Bar #%d: Width = %llu us\n", bar_count, pulse_duration_us);
 
                     if (pulse_duration_us > max_width)
                     {
@@ -284,7 +284,7 @@ void detect_surface_contrast_task(void *pvParameters)
                 }
                 else if (current_time - last_white_time > MAX_WHITE_TIME)
                 {
-                    printf("Detected extended white space - triggering decode.\n");
+                    printf("Triggering decode - Extended Whitespace Detected.\n");
                     decode_barcode();
                     last_white_time = 0; // Reset white timing
                 }
