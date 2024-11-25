@@ -1,4 +1,0 @@
-add_subdirectory(IR_Bar)
-add_subdirectory(IR_Bar_Line)
-add_subdirectory(IR_Linefollow)
-add_subdirectory(pid_line)
