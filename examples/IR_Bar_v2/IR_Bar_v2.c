@@ -1,6 +1,5 @@
 
 
-
 #include "pico/stdlib.h"
 #include "hardware/pwm.h"
 #include "FreeRTOS.h"
@@ -8,7 +7,7 @@
 #include "hardware/adc.h"
 #include <stdio.h>
 #include <string.h>
-#include <limits.h>  // For INT_MAX
+#include <limits.h> // For INT_MAX
 #include <stdlib.h>
 
 // Define GPIO pins for motors
@@ -27,11 +26,11 @@
 #define THRESHOLD 2480   // Black/White threshold
 #define NUM_SAMPLES 2
 #define MAX_BARS 29
-#define NOISE_THRESHOLD 500    // Reduced for higher speed
-#define DEBOUNCE_DELAY 500     // Reduced for higher speed
+#define NOISE_THRESHOLD 500             // Reduced for higher speed
+#define DEBOUNCE_DELAY 500              // Reduced for higher speed
 #define END_BAR_SPACE_THRESHOLD 3000000 // Threshold for detecting end-of-barcode space
-volatile uint64_t last_white_time = 0;  // Time when last white surface was detected
-#define MAX_WHITE_TIME 5000000           // Maximum time to stay on white before forcing a decode
+volatile uint64_t white_line_timestamp = 0;  // Time when last white surface was detected
+#define MAX_WHITE_TIME 5000000          // Maximum time to stay on white before forcing a decode
 
 // Code 39 Encoding (Narrow = 1, Wide = 2)
 const char *code39_patterns[] = {
@@ -52,14 +51,14 @@ void setup_pwm(uint32_t gpioLeft, uint32_t gpioRight);
 void init_motor_pins();
 void move_forward(uint32_t gpioLeft, uint32_t gpioRight, float speed);
 void straight_line_task(void *pvParameters);
-void detect_surface_contrast_task(void *pvParameters);
+void barcode_task(void *pvParameters);
 uint16_t read_adc();
-void reset_bar_data();
-char decode_character();
-void decode_barcode();
-void display_captured_bars();
+void reset_data();
+char get_pattern();
+void get_barcode();
+void show_found_bars();
 int levenshtein_distance(const char *s, const char *t);
-char classify_bar_width(uint64_t width, uint64_t max_width);
+char get_bar_width(uint64_t width, uint64_t max_width);
 
 // Motor Control Code
 void setup_pwm(uint32_t gpioLeft, uint32_t gpioRight)
@@ -125,46 +124,46 @@ void straight_line_task(void *pvParameters)
 // Barcode Detection Code
 
 // Variables for pulse measurement
-volatile uint64_t last_transition_time = 0; // Time of the last transition
-const char *previous_color = "White";       // Track previous surface color ("Black" or "White")
-bool decoding_active = false;               // Flag to indicate if decoding has started
-bool initial_black_detected = false;        // Flag to confirm first Black bar
+volatile uint64_t last_event_time = 0; // Time of the last transition
+const char *prev_color = "White";  // Track previous surface color ("Black" or "White")
+bool is_decoding = false;              // Flag to indicate if decoding has started
+bool first_black = false;              // Flag to confirm first Black bar
 
 // Buffer for storing barcode data
-uint64_t bar_widths[MAX_BARS];    // Array to store bar widths
-const char *bar_colors[MAX_BARS]; // Array to store colors ("Black" or "White")
-int bar_count = 0;                // Counter for bars in a single character
-uint64_t max_width = 0;           // Track max width dynamically
+uint64_t array_bar_widths[LINE_MAXIMUM_BARS];    // Array to store bar widths
+const char *array_bar_colors[LINE_MAXIMUM_BARS]; // Array to store colors ("Black" or "White")
+int total_bars = 0;                      // Counter for bars in a single character
+uint64_t maximum_width = 0;                 // Track max width dynamically
 
 uint16_t read_adc()
 {
     return adc_read();
 }
 
-void reset_bar_data()
+void reset_data()
 {
-    for (int i = 0; i < MAX_BARS; i++)
+    for (int i = 0; i < LINE_MAXIMUM_BARS; i++)
     {
-        bar_widths[i] = 0;
-        bar_colors[i] = "Unknown";
+        array_bar_widths[i] = 0;
+        array_bar_colors[i] = "Unknown";
     }
-    bar_count = 0;
-    max_width = 0;
-    initial_black_detected = false;
-    previous_color = "White";
-    last_white_time = 0;
+    total_bars = 0;
+    maximum_width = 0;
+    first_black = false;
+    prev_color = "White";
+    white_line_timestamp = 0;
 }
 
-void display_captured_bars()
+void show_found_bars()
 {
     printf("Captured Bar Widths (during decoding):\n");
-    for (int i = 0; i < bar_count; i++)
+    for (int i = 0; i < total_bars; i++)
     {
-        printf("Bar #%d: Width = %llu us, Color = %s\n", i, bar_widths[i], bar_colors[i]);
+        printf("Bar #%d: Width = %llu us, Color = %s\n", i, array_bar_widths[i], array_bar_colors[i]);
     }
 }
 
-char classify_bar_width(uint64_t width, uint64_t max_width)
+char get_bar_width(uint64_t width, uint64_t max_width)
 {
     // Use a ratio to determine narrow vs wide
     if (width <= max_width * 0.5)
@@ -210,32 +209,32 @@ int levenshtein_distance(const char *s, const char *t)
     return matrix[len_s][len_t];
 }
 
-char decode_character()
+char get_pattern()
 {
-    printf("Debug: Max Width = %llu\n", max_width);
+    printf("Debug: Max Width = %llu\n", maximum_width);
 
-    char pattern[MAX_BARS + 1] = {0};
+    char pattern[LINE_MAXIMUM_BARS + 1] = {0};
 
-    for (int i = 0; i < bar_count; i++)
+    for (int i = 0; i < total_bars; i++)
     {
-        pattern[i] = classify_bar_width(bar_widths[i], max_width);
+        pattern[i] = get_bar_width(array_bar_widths[i], maximum_width);
     }
-    pattern[bar_count] = '\0';
+    pattern[total_bars] = '\0';
 
     printf("Debug: Captured Pattern: %s\n", pattern);
 
     int min_distance = INT_MAX;
-    char best_matches[10];  // Adjust size as needed
+    char best_matches[10]; // Adjust size as needed
     int best_matches_count = 0;
-    int best_match_is_reverse[10];  // Array to track if match is reverse
+    int best_match_is_reverse[10]; // Array to track if match is reverse
 
     // Check both the pattern and its reverse
-    char reverse_pattern[MAX_BARS + 1] = {0};
-    for (int i = 0; i < bar_count; i++)
+    char reverse_pattern[LINE_MAXIMUM_BARS + 1] = {0};
+    for (int i = 0; i < total_bars; i++)
     {
-        reverse_pattern[i] = pattern[bar_count - i - 1];
+        reverse_pattern[i] = pattern[total_bars - i - 1];
     }
-    reverse_pattern[bar_count] = '\0';
+    reverse_pattern[total_bars] = '\0';
 
     // Iterate over Code 39 patterns
     int num_patterns = sizeof(code39_patterns) / sizeof(code39_patterns[0]);
@@ -292,21 +291,20 @@ char decode_character()
     }
 }
 
-
 // Function to decode the entire barcode sequence
-void decode_barcode()
+void get_barcode()
 {
     printf("Decoding barcode...\n");
-    display_captured_bars();
-    char decoded_char = decode_character();
+    show_found_bars();
+    char decoded_char = get_pattern();
     printf("Decoded Character: %c\n", decoded_char);
 
-    reset_bar_data();
-    decoding_active = false;
+    reset_data();
+    is_decoding = false;
 }
 
 // Task to detect surface contrast and capture barcode data
-void detect_surface_contrast_task(void *pvParameters)
+void barcode_task(void *pvParameters)
 {
     adc_init();
     adc_gpio_init(IR_SENSOR_PIN);
@@ -319,75 +317,75 @@ void detect_surface_contrast_task(void *pvParameters)
         const char *current_color = (adc_value > THRESHOLD) ? "Black" : "White";
         uint64_t current_time = time_us_64();
 
-        if (!decoding_active && strcmp(current_color, "Black") == 0)
+        if (!is_decoding && strcmp(current_color, "Black") == 0)
         {
-            decoding_active = true;
-            reset_bar_data();
-            last_transition_time = current_time;
-            previous_color = "Black"; // Initialize previous_color
+            is_decoding = true;
+            reset_data();
+            last_event_time = current_time;
+            prev_color = "Black"; // Initialize previous_color
             printf("Starting barcode detection\n");
         }
 
-        if (decoding_active && !initial_black_detected && strcmp(current_color, "Black") == 0)
+        if (is_decoding && !first_black && strcmp(current_color, "Black") == 0)
         {
-            initial_black_detected = true;
-            previous_color = "Black";
+            first_black = true;
+            prev_color = "Black";
         }
 
-        if (decoding_active && initial_black_detected)
+        if (is_decoding && first_black)
         {
-            if (strcmp(current_color, previous_color) != 0)
+            if (strcmp(current_color, prev_color) != 0)
             {
-                uint64_t pulse_duration_us = current_time - last_transition_time;
+                uint64_t pulse_duration_us = current_time - last_event_time;
 
-                if (pulse_duration_us > NOISE_THRESHOLD + DEBOUNCE_DELAY && bar_count < MAX_BARS)
+                if (pulse_duration_us > NOISE_THRESHOLD + DEBOUNCE_DELAY && total_bars < LINE_MAXIMUM_BARS)
                 {
-                    bar_widths[bar_count] = pulse_duration_us;
-                    bar_colors[bar_count] = previous_color;
+                    array_bar_widths[total_bars] = pulse_duration_us;
+                    array_bar_colors[total_bars] = prev_color;
 
-                    printf("Captured Bar Color: %s\n", previous_color);
-                    printf("Captured bar #%d: Width = %llu us\n", bar_count, pulse_duration_us);
+                    printf("Captured Bar Color: %s\n", prev_color);
+                    printf("Captured bar #%d: Width = %llu us\n", total_bars, pulse_duration_us);
 
-                    if (pulse_duration_us > max_width)
+                    if (pulse_duration_us > maximum_width)
                     {
-                        max_width = pulse_duration_us;
-                        printf("Updated Max Width: %llu\n", max_width);
+                        maximum_width = pulse_duration_us;
+                        printf("Updated Max Width: %llu\n", maximum_width);
                     }
-                    bar_count++;
+                    total_bars++;
                 }
 
-                if (bar_count >= MAX_BARS)
+                if (total_bars >= LINE_MAXIMUM_BARS)
                 {
-                    decode_barcode();
+                    get_barcode();
                 }
 
-                previous_color = current_color;
-                last_transition_time = current_time;
+                prev_color = current_color;
+                last_event_time = current_time;
             }
 
             // Check for extended white period to force decode
             if (strcmp(current_color, "White") == 0)
             {
-                if (last_white_time == 0)
+                if (white_line_timestamp == 0)
                 {
-                    last_white_time = current_time; // Start timing white period
+                    white_line_timestamp = current_time; // Start timing white period
                 }
-                else if (current_time - last_white_time > MAX_WHITE_TIME)
+                else if (current_time - white_line_timestamp > MAX_DURATION_WHITE_LINE)
                 {
                     printf("Detected extended white space - triggering decode.\n");
-                    decode_barcode();
-                    last_white_time = 0; // Reset white timing
+                    get_barcode();
+                    white_line_timestamp = 0; // Reset white timing
                 }
             }
             else
             {
-                last_white_time = 0; // Reset white timing if black is detected
+                white_line_timestamp = 0; // Reset white timing if black is detected
             }
         }
         else
         {
             // If not decoding, ensure last_white_time is reset
-            last_white_time = 0;
+            white_line_timestamp = 0;
         }
 
         vTaskDelay(pdMS_TO_TICKS(1)); // Small delay for next ADC reading
@@ -404,7 +402,7 @@ int main()
     TaskHandle_t straight_line_handle, detect_surface_contrast_handle;
 
     xTaskCreate(straight_line_task, "Straight Line Task", 256, NULL, 1, &straight_line_handle);
-    xTaskCreate(detect_surface_contrast_task, "Barcode Detection Task", 1024, NULL, 1, &detect_surface_contrast_handle);
+    xTaskCreate(barcode_task, "Barcode Detection Task", 1024, NULL, 1, &detect_surface_contrast_handle);
 
     vTaskStartScheduler();
     while (true)
@@ -412,9 +410,6 @@ int main()
         // Should never reach here
     }
 }
-
-
-
 
 /*void straight_line_task(void *pvParameters)
 {

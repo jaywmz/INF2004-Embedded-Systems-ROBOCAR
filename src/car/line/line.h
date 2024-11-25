@@ -24,11 +24,11 @@
 
 // Barcode Detection Settings
 #define NUM_SAMPLES 2
-#define MAX_BARS 29
+#define LINE_MAXIMUM_BARS 29
 #define NOISE_THRESHOLD 500
 #define DEBOUNCE_DELAY 500
 #define END_BAR_SPACE_THRESHOLD 3000000
-#define MAX_WHITE_TIME 5000000
+#define WHITE_LINE_MAX_DURATION 5000000
 
 typedef enum LineColor
 {
@@ -36,16 +36,16 @@ typedef enum LineColor
     WHITE
 } LineColor;
 
-void detect_surface_contrast_task(void *pvParameters);
+void barcode_task(void *pvParameters);
 void line_following_task(void *pvParameters);
 
 uint16_t read_adc(uint8_t input);
-void reset_bar_data();
-char decode_character();
-void decode_barcode();
-void display_captured_bars();
+void reset_data();
+char get_pattern();
+void get_barcode();
+void show_found_bars();
 int levenshtein_distance(const char *s, const char *t);
-char classify_bar_width(uint64_t width, uint64_t max_width);
+char get_bar_width(uint64_t width, uint64_t max_width);
 
 void init_ir_sensors(void);
 LineColor read_line_sensor(void);
