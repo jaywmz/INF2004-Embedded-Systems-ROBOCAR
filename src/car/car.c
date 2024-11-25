@@ -25,6 +25,8 @@ EncoderData motor1_encoder_data, motor2_encoder_data;
 KalmanState kalman_state;
 // Global compass struct for storing remote controls
 Compass compass;
+// Global telemetry struct for sending sensor data
+Telemetry telemetry;
 // PID controllers for left and right motors
 PIDController pid_motor_1, pid_motor_2;
 // Task handles for motor and line tasks
@@ -89,7 +91,9 @@ void vTaskEncoder(void *pvParameters)
 
         // Calculate speed, since interval is 100ms, multiply 10 to get pulses per second
         float speed_motor1 = (float)pulses_motor1 * 10;
+        telemetry.left_encoder_speed = speed_motor1;
         float speed_motor2 = (float)pulses_motor2 * 10;
+        telemetry.right_encoder_speed = speed_motor2;
 
         // Get moving average of speed and save to encoder structs
         motor1_encoder_data.speed = movingAvg(true, speed_motor1);
@@ -110,72 +114,31 @@ void vTaskMotor(__unused void *pvParameters)
 
         speed = (speed > 1.0) ? 1.0 : speed;
 
-        switch (compass.direction) 
+        switch (compass.direction)
         {
-            case 0:
+        case 0:
+            stop_motors();
+            break;
+        case 1:
+            if (PLS_STOP == 1)
+            {
                 stop_motors();
-                break;
-            case 1:
-                if (PLS_STOP == 1) {
-                    stop_motors();
-                }
-                else {
-                    move_forward(speed - 0.02, speed);
-                }
-                break;
-            case 2:
-                move_backward(speed - 0.02, speed);
-                break;
-            case 3:
-                turn_left(speed - 0.02, speed);
-                break;
-            case 4:
-                turn_right(speed - 0.02, speed);
-                break;
+            }
+            else
+            {
+                move_forward(speed - 0.02, speed);
+            }
+            break;
+        case 2:
+            move_backward(speed - 0.02, speed);
+            break;
+        case 3:
+            turn_left(speed - 0.02, speed);
+            break;
+        case 4:
+            turn_right(speed - 0.02, speed);
+            break;
         }
-
-        // if (compass.direction == 1)
-        // {
-        //     if (PLS_STOP == 1)
-        //     {
-        //         stop_motors();
-        //     }
-        //     else
-        //     {
-        //         // printf("Moving forward\n");
-        //         // adjust_motor_speeds_with_pid();
-        //         move_forward(speed - 0.02, speed);
-        //     }
-        // }
-        // else if (compass.direction == 2)
-        // {
-        //     // printf("Moving backward\n");
-        //     // adjust_motor_speeds_with_pid();
-        //     move_backward(speed - 0.02, speed);
-        // }
-        // else if (compass.direction == 3)
-        // {
-        //     // printf("Turning left\n");
-        //     // adjust_motor_speeds_with_pid();
-        //     turn_left(speed - 0.02, speed);
-        // }
-        // else if (compass.direction == 4)
-        // {
-        //     // printf("Turning right\n");
-        //     // adjust_motor_speeds_with_pid();
-        //     turn_right(speed - 0.02, speed);
-        // }
-        // else if (compass.direction == 0)
-        // {
-        //     // printf("Stopping\n");
-        //     stop_motors();
-        // }
-        // else
-        // {
-        //     printf("Invalid direction\n");
-        //     stop_motors();
-        // }
-        // vTaskDelay(pdMS_TO_TICKS(SAMPLE_INTERVAL_MS)); // Wait for next sample
     }
 }
 
@@ -202,33 +165,15 @@ void vTaskLineFollow(__unused void *pvParameters)
             {
                 turn_left(0.60, 0.70);
             }
-            // turn_left(0.55, 0.65);
         }
 
         uint64_t new_time = time_us_64();
         if (new_time - current_time > 400000)
         {
-        // move_forward(0, 0.6);
+            // move_forward(0, 0.6);
             should_go_left = 0;
             turn_right(0.8, 0.7);
         }
-    }
-}
-
-// Line detecting task to search for black line and change to line following task when detected
-void vTaskLineDetect(__unused void *pvParameters) {
-    adc_gpio_init(LINE_SENSOR_PIN); // Initialize ADC pin for barcode sensor
-
-    while (true)
-    {
-        if (read_line_sensor() == BLACK)
-        {
-            vTaskSuspend(motorTask);
-            vTaskSuspend(encoderTask);
-            xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, &lineFollowTask);
-            vTaskDelete(NULL);
-        }
-        vTaskDelay(pdTICKS_TO_MS(10));
     }
 }
 
@@ -240,26 +185,25 @@ void vTaskCompass(__unused void *pvParameters)
     {
         get_compass_data(&compass);
         // printf("Direction: %d | Speed: %d | Manual Mode: %d\n", compass.direction, compass.speed, compass.manual_mode);
-        // if (compass.manual_mode != manual_mode_prev)
-        // {
-        //     if (compass.manual_mode == 1)
-        //     {
-        //         if (lineFollowTask != NULL)
-        //         {
-        //             vTaskDelete(lineFollowTask);
-        //         }
-        //         vTaskResume(motorTask);
-        //         vTaskResume(encoderTask);
-        //     }
-        //     else
-        //     {
-        //         vTaskSuspend(motorTask);
-        //         vTaskSuspend(encoderTask);
-        //         xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineFollowTask);
-        //     }
-        //     manual_mode_prev = compass.manual_mode;
-        // }
-        send_telemetry(NULL);
+        if (compass.manual_mode != manual_mode_prev)
+        {
+            if (compass.manual_mode == 1)
+            {
+                if (lineFollowTask != NULL)
+                {
+                    vTaskDelete(lineFollowTask);
+                }
+                vTaskResume(motorTask);
+                vTaskResume(encoderTask);
+            }
+            else
+            {
+                vTaskSuspend(motorTask);
+                vTaskSuspend(encoderTask);
+                xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineFollowTask);
+            }
+            manual_mode_prev = compass.manual_mode;
+        }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
@@ -281,6 +225,7 @@ void vTaskUltrasonic(__unused void *pvParameters)
         // Measure pulse length and calculate distance
         uint64_t pulse_length = get_pulse_length();
         double distance = get_cm(&kalman_state, pulse_length);
+        telemetry.ultrasonic_distance = distance;
 
         // Set or clear stop flag based on distance
         if (distance < STOPPING_DISTANCE)
@@ -299,7 +244,7 @@ void vTaskTelemetry(__unused void *pvParameters)
 {
     while (1)
     {
-        send_telemetry(NULL);
+        send_telemetry(&telemetry);
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
@@ -308,17 +253,14 @@ void vTaskTelemetry(__unused void *pvParameters)
 void vLaunch()
 {
     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
-    // vTaskSuspend(motorTask);
+    vTaskSuspend(motorTask);
     xTaskCreate(vTaskEncoder, "EncoderTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
-    // vTaskSuspend(encoderTask);
-    // xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineFollowTask);
-    // vTaskSuspend(lineFollowTask);
+    vTaskSuspend(encoderTask);
 
-    TaskHandle_t compassTask, ultrasonicTask, lineDetectTask;
+    TaskHandle_t compassTask, ultrasonicTask, dashboardTask;
     xTaskCreate(vTaskCompass, "CompassTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &compassTask);
-    xTaskCreate(vTaskLineDetect, "LineDetectTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineDetectTask);
     xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &ultrasonicTask);
-    // xTaskCreate(vTaskTelemetry, "DashboardTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 3UL, &dashboardTask);
+    xTaskCreate(vTaskTelemetry, "DashboardTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 3UL, &dashboardTask);
     vTaskStartScheduler();
 }
 
@@ -342,6 +284,11 @@ int main(void)
     float setpoint = 0.0;
     pid_init(&pid_motor_1, kp1, ki1, kd1, setpoint, 0.0, 1.0); // Left motor PID
     pid_init(&pid_motor_2, kp2, ki2, kd2, setpoint, 0.0, 1.0); // Right motor PID
+
+    telemetry.left_encoder_speed = 0;
+    telemetry.right_encoder_speed = 0;
+    telemetry.ultrasonic_distance = 0;
+    telemetry.decoded_character = '0';
 
     sleep_ms(1000); // Small delay to ensure system is ready
     vLaunch();      // Launch tasks and start FreeRTOS scheduler

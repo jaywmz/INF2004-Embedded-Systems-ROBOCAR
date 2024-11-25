@@ -108,7 +108,8 @@ void send_telemetry(Telemetry *telemetry)
 {
     char *req = (char *)g_pbuf->payload;
     memset(req, 0, BEACON_MSG_LEN_MAX + 1);
-    snprintf(req, BEACON_MSG_LEN_MAX, "{some_test_message}\n");
+    snprintf(req, BEACON_MSG_LEN_MAX, "{ls:%d,rs:%d,d:%d,c:%c}\n", telemetry->left_encoder_speed,
+             telemetry->right_encoder_speed, telemetry->ultrasonic_distance, telemetry->decoded_character);
     err_t er = udp_sendto(g_sender_pcb, g_pbuf, &g_addr, UDP_PORT);
     if (er != ERR_OK)
     {

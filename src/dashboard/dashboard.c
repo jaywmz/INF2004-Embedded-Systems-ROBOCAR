@@ -20,15 +20,20 @@ static struct udp_pcb *g_sender_pcb;
 static ip_addr_t g_addr;
 static struct pbuf *g_pbuf;
 
-static int g_direction = 0;
-static int g_speed = 0;
+static int g_left_encoder_speed = 0;
+static int g_right_encoder_speed = 0;
+static int g_ultrasonic_distance = 0;
+static char g_decoded_char = ' ';
 
 static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
 {
     if (p != NULL)
     {
-        // sscanf((char *)p->payload, "{d:%d,s:%d}", &g_direction, &g_speed);
-        printf("Received: %s\n", (char *)p->payload);
+        // printf("Received: %s\n", (char *)p->payload);
+        if (sscanf((char *)p->payload, "{ls:%d,rs:%d,d:%d,c:%c}", &g_left_encoder_speed, &g_right_encoder_speed, &g_ultrasonic_distance, &g_decoded_char))
+        {
+            printf("===\nLeft Encoder Speed: %d\nRight Encoder Speed: %d\nUltrasonic Distance: %dcm\nCharacter: %c\n", g_left_encoder_speed, g_right_encoder_speed, g_ultrasonic_distance, g_decoded_char);
+        }
         pbuf_free(p);
     }
 }

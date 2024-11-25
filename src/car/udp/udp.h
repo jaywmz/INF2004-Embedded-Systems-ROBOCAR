@@ -13,7 +13,10 @@ typedef struct Compass
 typedef struct Telemetry
 {
     // TODO: Add telemetry data
-
+    int left_encoder_speed;
+    int right_encoder_speed;
+    int ultrasonic_distance;
+    int decoded_character;
 } Telemetry;
 
 void init_udp();
