@@ -201,9 +201,9 @@ void vTaskLineFollow(__unused void *pvParameters)
             if (should_go_left)
             {
                 turn_left(0.60, 0.70);
-        }
+            }
             // turn_left(0.55, 0.65);
-    }
+        }
 
         uint64_t new_time = time_us_64();
         if (new_time - current_time > 400000)
@@ -226,6 +226,7 @@ void vTaskLineDetect(__unused void *pvParameters) {
             vTaskSuspend(motorTask);
             vTaskSuspend(encoderTask);
             xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, &lineFollowTask);
+            vTaskDelete(NULL);
         }
         vTaskDelay(pdTICKS_TO_MS(10));
     }
