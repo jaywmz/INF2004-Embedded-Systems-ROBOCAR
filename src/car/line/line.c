@@ -323,7 +323,6 @@ uint16_t read_adc_avg(uint8_t input, uint8_t num_samples)
 LineColor read_line_sensor(void)
 {
     adc_select_input(1);
-
     // return (adc_read() > LINE_THRESHOLD) ? BLACK : WHITE;
     // return (adc_read() > 1100) ? BLACK : WHITE;
     return (adc_read() > 2000) ? BLACK : WHITE;

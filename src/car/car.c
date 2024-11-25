@@ -104,7 +104,6 @@ void vTaskEncoder(void *pvParameters)
 // Motor control task to adjust motor speeds based on ultrasonic sensor feedback
 void vTaskMotor(__unused void *pvParameters)
 {
-    int state = 0;
     while (1)
     {
         float speed = ((float)compass.speed / 100.0f) * 2;
@@ -160,7 +159,6 @@ void vTaskMotor(__unused void *pvParameters)
 void vTaskLineFollow(__unused void *pvParameters)
 {
     // Start moving forward initially
-
     move_forward(0.8, 0.8);         // Set initial speed
     vTaskDelay(pdMS_TO_TICKS(100)); // Wait for motors to start
 
@@ -180,17 +178,33 @@ void vTaskLineFollow(__unused void *pvParameters)
             if (should_go_left)
             {
                 turn_left(0.60, 0.70);
-            }
-            // turn_left(0.55, 0.65);
         }
+            // turn_left(0.55, 0.65);
+    }
 
         uint64_t new_time = time_us_64();
         if (new_time - current_time > 400000)
         {
-            // move_forward(0, 0.6);
+        // move_forward(0, 0.6);
             should_go_left = 0;
             turn_right(0.8, 0.7);
         }
+    }
+}
+
+// Line detecting task to search for black line and change to line following task when detected
+void vTaskLineDetect(__unused void *pvParameters) {
+    adc_gpio_init(LINE_SENSOR_PIN); // Initialize ADC pin for barcode sensor
+
+    while (true)
+    {
+        if (read_line_sensor() == BLACK)
+        {
+            vTaskSuspend(motorTask);
+            vTaskSuspend(encoderTask);
+            xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, &lineFollowTask);
+        }
+        vTaskDelay(pdTICKS_TO_MS(10));
     }
 }
 
@@ -202,27 +216,27 @@ void vTaskCompass(__unused void *pvParameters)
     {
         get_compass_data(&compass);
         // printf("Direction: %d | Speed: %d | Manual Mode: %d\n", compass.direction, compass.speed, compass.manual_mode);
-        if (compass.manual_mode != manual_mode_prev)
-        {
-            if (compass.manual_mode == 1)
-            {
-                if (lineFollowTask != NULL)
-                {
-                    vTaskDelete(lineFollowTask);
-                }
-                vTaskResume(motorTask);
-                vTaskResume(encoderTask);
-            }
-            else
-            {
-                vTaskSuspend(motorTask);
-                vTaskSuspend(encoderTask);
-                xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineFollowTask);
-            }
-            manual_mode_prev = compass.manual_mode;
-        }
-        // send_telemetry(NULL);
-        // vTaskDelay(pdMS_TO_TICKS(100));
+        // if (compass.manual_mode != manual_mode_prev)
+        // {
+        //     if (compass.manual_mode == 1)
+        //     {
+        //         if (lineFollowTask != NULL)
+        //         {
+        //             vTaskDelete(lineFollowTask);
+        //         }
+        //         vTaskResume(motorTask);
+        //         vTaskResume(encoderTask);
+        //     }
+        //     else
+        //     {
+        //         vTaskSuspend(motorTask);
+        //         vTaskSuspend(encoderTask);
+        //         xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineFollowTask);
+        //     }
+        //     manual_mode_prev = compass.manual_mode;
+        // }
+        send_telemetry(NULL);
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -270,14 +284,15 @@ void vTaskTelemetry(__unused void *pvParameters)
 void vLaunch()
 {
     xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
-    vTaskSuspend(motorTask);
+    // vTaskSuspend(motorTask);
     xTaskCreate(vTaskEncoder, "EncoderTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
-    vTaskSuspend(encoderTask);
+    // vTaskSuspend(encoderTask);
     // xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineFollowTask);
     // vTaskSuspend(lineFollowTask);
 
-    TaskHandle_t compassTask, ultrasonicTask;
+    TaskHandle_t compassTask, ultrasonicTask, lineDetectTask;
     xTaskCreate(vTaskCompass, "CompassTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &compassTask);
+    xTaskCreate(vTaskLineDetect, "LineDetectTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineDetectTask);
     xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &ultrasonicTask);
     // xTaskCreate(vTaskTelemetry, "DashboardTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 3UL, &dashboardTask);
     vTaskStartScheduler();
