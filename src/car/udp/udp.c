@@ -20,13 +20,14 @@ static struct pbuf *g_pbuf;
 
 static int g_direction = 0;
 static int g_speed = 0;
+static int g_manual_mode = 0;
 
 static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
 {
     if (p != NULL)
     {
         // printf("Received packet from %s:%d\n", ipaddr_ntoa(addr), port);
-        sscanf((char *)p->payload, "{d:%d,s:%d}", &g_direction, &g_speed);
+        sscanf((char *)p->payload, "{mm:%d,d:%d,s:%d}", &g_manual_mode, &g_direction, &g_speed);
         // printf("Data: %.*s\n", p->len, (char *)p->payload);
         pbuf_free(p);
     }
@@ -100,6 +101,7 @@ void get_compass_data(Compass *compass)
     // printf("{d:%d,s:%d}\n", g_direction, g_speed);
     compass->direction = g_direction;
     compass->speed = g_speed;
+    compass->manual_mode = g_manual_mode;
 }
 
 void send_telemetry(Telemetry *telemetry)

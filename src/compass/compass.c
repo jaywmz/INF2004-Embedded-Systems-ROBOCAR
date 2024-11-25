@@ -336,11 +336,23 @@ void udp_task(__unused void *params)
     }
     printf("Allocated pbuf\n");
 
+    int manual_mode = 1;
+
     while (1)
     {
         char *req = (char *)p->payload;
         memset(req, 0, BEACON_MSG_LEN_MAX + 1);
-        snprintf(req, BEACON_MSG_LEN_MAX, "{d:%d,s:%d}\n", map_direction_to_number(g_direction), g_speed);
+        // snprintf(req, BEACON_MSG_LEN_MAX, "{d:%d,s:%d}\n", map_direction_to_number(g_direction), g_speed);
+        if (!gpio_get(20))
+        {
+            manual_mode = 1;
+        }
+        else if (!gpio_get(22))
+        {
+            manual_mode = 0;
+        }
+        snprintf(req, BEACON_MSG_LEN_MAX, "{mm:%d,d:%d,s:%d}\n", manual_mode, map_direction_to_number(g_direction), g_speed);
+
         err_t er = udp_sendto(pcb, p, &addr, UDP_PORT);
         if (er != ERR_OK)
         {
@@ -366,6 +378,11 @@ int main()
     i2c_init_setup();
     accel_init();
     mag_init();
+
+    gpio_init(20);
+    gpio_set_dir(20, GPIO_IN);
+    gpio_init(22);
+    gpio_set_dir(22, GPIO_IN);
 
     TaskHandle_t read_motor_task_handle, mqtt_task_handle;
     xTaskCreate(read_motor_task, "ReadMotorTask", configMINIMAL_STACK_SIZE,

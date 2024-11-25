@@ -27,6 +27,9 @@ KalmanState kalman_state;
 Compass compass;
 // PID controllers for left and right motors
 PIDController pid_motor_1, pid_motor_2;
+// Task handles for motor and line tasks
+TaskHandle_t motorTask, lineFollowTask, encoderTask;
+
 // Global flag to indicate when the car should stop based on ultrasonic readings
 int PLS_STOP = 0;
 
@@ -154,11 +157,70 @@ void vTaskMotor(__unused void *pvParameters)
     }
 }
 
+void vTaskLineFollow(__unused void *pvParameters)
+{
+    // Start moving forward initially
+
+    move_forward(0.8, 0.8);         // Set initial speed
+    vTaskDelay(pdMS_TO_TICKS(100)); // Wait for motors to start
+
+    uint64_t current_time = time_us_64();
+    int should_go_left = 1;
+
+    while (1)
+    {
+        if (read_line_sensor() == BLACK)
+        {
+            current_time = time_us_64();
+            should_go_left = 1;
+            move_forward(0.80, 0.65);
+        }
+        else
+        {
+            if (should_go_left)
+            {
+                turn_left(0.60, 0.85);
+            }
+            // turn_left(0.55, 0.65);
+        }
+
+        uint64_t new_time = time_us_64();
+        if (new_time - current_time > 400000)
+        {
+            // move_forward(0, 0.6);
+            should_go_left = 0;
+            turn_right(0.9, 0.5);
+        }
+    }
+}
+
 void vTaskCompass(__unused void *pvParameters)
 {
+    uint16_t manual_mode_prev = 1; // True
+
     while (1)
     {
         get_compass_data(&compass);
+        // printf("Direction: %d | Speed: %d | Manual Mode: %d\n", compass.direction, compass.speed, compass.manual_mode);
+        if (compass.manual_mode != manual_mode_prev)
+        {
+            if (compass.manual_mode == 1)
+            {
+                if (lineFollowTask != NULL)
+                {
+                    vTaskDelete(lineFollowTask);
+                }
+                vTaskResume(motorTask);
+                vTaskResume(encoderTask);
+            }
+            else
+            {
+                vTaskSuspend(motorTask);
+                vTaskSuspend(encoderTask);
+                xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineFollowTask);
+            }
+            manual_mode_prev = compass.manual_mode;
+        }
         // send_telemetry(NULL);
         // vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -197,7 +259,6 @@ void vTaskUltrasonic(__unused void *pvParameters)
 // Dashboard task to send car sensor data to serial monitor
 void vTaskTelemetry(__unused void *pvParameters)
 {
-
     while (1)
     {
         send_telemetry(NULL);
@@ -205,92 +266,28 @@ void vTaskTelemetry(__unused void *pvParameters)
     }
 }
 
-TaskHandle_t motorTask, lineFollowTask;
-
-// Line detecting task to search for black line and change to line following task when detected
-void vTaskLineDetect(__unused void *pvParameters)
-{
-    static bool line_detected = false;
-    while (true)
-    {
-        uint16_t adc_value = read_adc(0); // Read from ADC input 0 (Pin 26)
-
-        const char *current_color = (adc_value > BARCODE_THRESHOLD) ? "Black" : "White";
-
-        if (!line_detected && strcmp(current_color, "Black") == 0)
-        {
-            line_detected = true;
-            vTaskDelete(motorTask);
-            // xTaskCreate(detect_surface_contrast_task, "Barcode Detection Task", 2048, NULL, tskIDLE_PRIORITY + 2UL, &detect_surface_contrast_handle);
-            // xTaskCreate(line_following_task, "Line Following Task", 1024, NULL, tskIDLE_PRIORITY + 2UL, &line_following_handle);
-        }
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-}
-
-// void vTaskLineFollow(__unused void *pvParameters)
-// {
-//     // Start moving forward initially
-//     move_forward(0.6, 0.6); // Set initial speed
-
-//     while (1)
-//     {
-//         if (read_line_sensor() == BLACK)
-//         {
-//             move_forward(0.6, 0.7);
-//         }
-//         else
-//         {
-//             move_forward(0.7, 0.6);
-//         }
-//     }
-// }
-
-void vTaskLineFollow(__unused void *pvParameters)
-{
-    // Start moving forward initially
-    move_forward(0.6, 0.6); // Set initial speed
-
-    uint64_t current_time = 0;
-
-    while (1)
-    {
-        if (read_line_sensor() == BLACK)
-        {
-            current_time = time_us_64();
-            move_forward(0.55, 0.65);
-        }
-        else
-        {
-            move_forward(0.65, 0.55);
-        }
-
-        uint64_t new_time = time_us_64();
-        if (new_time - current_time > 250000)
-        {
-            move_forward(0, 0.7);
-        }
-    }
-}
-
 // Function to launch all tasks and start the FreeRTOS scheduler
 void vLaunch()
 {
-    TaskHandle_t compassTask, encoderTask, distanceTask, dashboardTask;
-    // xTaskCreate(vTaskCompass, "CompassTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &compassTask);
-    // xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
+    xTaskCreate(vTaskMotor, "MotorTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &motorTask);
+    vTaskSuspend(motorTask);
     xTaskCreate(vTaskEncoder, "EncoderTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &encoderTask);
-    xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &distanceTask);
+    vTaskSuspend(encoderTask);
+    // xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineFollowTask);
+    // vTaskSuspend(lineFollowTask);
+
+    TaskHandle_t compassTask, ultrasonicTask;
+    xTaskCreate(vTaskCompass, "CompassTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &compassTask);
+    xTaskCreate(vTaskUltrasonic, "UltrasonicTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2UL, &ultrasonicTask);
     // xTaskCreate(vTaskTelemetry, "DashboardTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 3UL, &dashboardTask);
-    xTaskCreate(vTaskLineFollow, "LineFollowTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1UL, &lineFollowTask);
     vTaskStartScheduler();
 }
 
 // Main function for system initialization and launching tasks
 int main(void)
 {
-    stdio_init_all(); // Initialize standard I/O for debugging
-    init_udp();
+    stdio_init_all();  // Initialize standard I/O for debugging
+    init_udp();        // Initialize UDP communication
     init_encoder();    // Initialize encoders
     init_motors();     // Initialize motors
     init_ultrasonic(); // Initialize ultrasonic sensor
