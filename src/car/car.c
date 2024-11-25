@@ -173,13 +173,13 @@ void vTaskLineFollow(__unused void *pvParameters)
         {
             current_time = time_us_64();
             should_go_left = 1;
-            move_forward(0.75, 0.65);
+            move_forward(0.75, 0.7);
         }
         else
         {
             if (should_go_left)
             {
-                turn_left(0.6, 0.75);
+                turn_left(0.60, 0.70);
             }
             // turn_left(0.55, 0.65);
         }
@@ -189,7 +189,7 @@ void vTaskLineFollow(__unused void *pvParameters)
         {
             // move_forward(0, 0.6);
             should_go_left = 0;
-            turn_right(0.9, 0.5);
+            turn_right(0.8, 0.7);
         }
     }
 }
