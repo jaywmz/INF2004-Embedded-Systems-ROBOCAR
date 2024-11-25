@@ -325,7 +325,8 @@ LineColor read_line_sensor(void)
     adc_select_input(1);
 
     // return (adc_read() > LINE_THRESHOLD) ? BLACK : WHITE;
-    return (adc_read() > 1700) ? BLACK : WHITE;
+    // return (adc_read() > 1100) ? BLACK : WHITE;
+    return (adc_read() > 2000) ? BLACK : WHITE;
 }
 
 LineColor read_line_sensor2(void)
