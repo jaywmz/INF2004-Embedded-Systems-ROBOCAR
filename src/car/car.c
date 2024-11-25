@@ -107,51 +107,74 @@ void vTaskMotor(__unused void *pvParameters)
     while (1)
     {
         float speed = ((float)compass.speed / 100.0f) * 2;
-        if (speed > 1.0)
+
+        speed = (speed > 1.0) ? 1.0 : speed;
+
+        switch (compass.direction) 
         {
-            speed = 1.0;
-        }
-        if (compass.direction == 1)
-        {
-            if (PLS_STOP == 1)
-            {
+            case 0:
                 stop_motors();
-            }
-            else
-            {
-                // printf("Moving forward\n");
-                // adjust_motor_speeds_with_pid();
-                move_forward(speed - 0.02, speed);
-            }
+                break;
+            case 1:
+                if (PLS_STOP == 1) {
+                    stop_motors();
+                }
+                else {
+                    move_forward(speed - 0.02, speed);
+                }
+                break;
+            case 2:
+                move_backward(speed - 0.02, speed);
+                break;
+            case 3:
+                turn_left(speed - 0.02, speed);
+                break;
+            case 4:
+                turn_right(speed - 0.02, speed);
+                break;
         }
-        else if (compass.direction == 2)
-        {
-            // printf("Moving backward\n");
-            // adjust_motor_speeds_with_pid();
-            move_backward(speed - 0.02, speed);
-        }
-        else if (compass.direction == 3)
-        {
-            // printf("Turning left\n");
-            // adjust_motor_speeds_with_pid();
-            turn_left(speed - 0.02, speed);
-        }
-        else if (compass.direction == 4)
-        {
-            // printf("Turning right\n");
-            // adjust_motor_speeds_with_pid();
-            turn_right(speed - 0.02, speed);
-        }
-        else if (compass.direction == 0)
-        {
-            // printf("Stopping\n");
-            stop_motors();
-        }
-        else
-        {
-            printf("Invalid direction\n");
-            stop_motors();
-        }
+
+        // if (compass.direction == 1)
+        // {
+        //     if (PLS_STOP == 1)
+        //     {
+        //         stop_motors();
+        //     }
+        //     else
+        //     {
+        //         // printf("Moving forward\n");
+        //         // adjust_motor_speeds_with_pid();
+        //         move_forward(speed - 0.02, speed);
+        //     }
+        // }
+        // else if (compass.direction == 2)
+        // {
+        //     // printf("Moving backward\n");
+        //     // adjust_motor_speeds_with_pid();
+        //     move_backward(speed - 0.02, speed);
+        // }
+        // else if (compass.direction == 3)
+        // {
+        //     // printf("Turning left\n");
+        //     // adjust_motor_speeds_with_pid();
+        //     turn_left(speed - 0.02, speed);
+        // }
+        // else if (compass.direction == 4)
+        // {
+        //     // printf("Turning right\n");
+        //     // adjust_motor_speeds_with_pid();
+        //     turn_right(speed - 0.02, speed);
+        // }
+        // else if (compass.direction == 0)
+        // {
+        //     // printf("Stopping\n");
+        //     stop_motors();
+        // }
+        // else
+        // {
+        //     printf("Invalid direction\n");
+        //     stop_motors();
+        // }
         // vTaskDelay(pdMS_TO_TICKS(SAMPLE_INTERVAL_MS)); // Wait for next sample
     }
 }
